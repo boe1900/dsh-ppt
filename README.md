@@ -11,25 +11,10 @@
 
 需要 Node.js `^22.19.0 || >=24.0.0`，以及提供标准会话输入框插槽的 DSH Web / DSH Desktop。提取基线使用 DSH `0.1.5-rc.2`。
 
-从公共 npm 安装到目标 DSH profile：
+从 [公共 npm 包](https://www.npmjs.com/package/@cola1900/dsh-ppt) 直接安装到目标 DSH profile：
 
 ```sh
 dsh plugin --profile web add @cola1900/dsh-ppt
-```
-
-也可以从本仓库构建本地安装包：
-
-```sh
-cd /path/to/dsh-ppt
-npm ci
-npm run check
-npm pack
-```
-
-将生成的包加入目标 DSH profile：
-
-```sh
-dsh plugin --profile web add /absolute/path/to/dsh-ppt/cola1900-dsh-ppt-0.1.2.tgz
 ```
 
 把 `web` 替换为实际 profile，然后重启该 profile。新会话输入框上方启用 **PPT**，选择模板并描述需求。按钮、选中模板缩略图和可滚动模板列表使用官方 `conversation.input.dock` 插槽，无需 Desktop 的输入框补丁。
@@ -38,11 +23,16 @@ dsh plugin --profile web add /absolute/path/to/dsh-ppt/cola1900-dsh-ppt-0.1.2.tg
 
 ## 命令行
 
+使用独立命令行时，从 npm 全局安装：
+
 ```sh
-node lib/bin.js --help
-node lib/bin.js check skills/dsh-ppt/references/business/dsh-blue-professional/source --json
-node lib/bin.js render skills/dsh-ppt/references/business/dsh-blue-professional/source -o /tmp/example.pptx --json
+npm install -g @cola1900/dsh-ppt
+dsh-pptd --help
+dsh-pptd check /path/to/deck --json
+dsh-pptd render /path/to/deck -o /path/to/output.pptx --json
 ```
+
+把 `/path/to/deck` 替换为包含 `deck.pptd` 的 PPTD 项目目录。
 
 英文示例目录为 `source/`，中文为 `source-zh/`；预览语言不限制最终文稿语言。导出的文字、图形、表格与图表保留原生可编辑对象。机器上的字体会影响实际显示效果，插件不分发字体文件。
 
