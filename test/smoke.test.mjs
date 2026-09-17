@@ -11,11 +11,12 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { unzipSync } from 'fflate';
 import { JSDOM } from 'jsdom';
+import yaml from 'js-yaml';
 import { Context } from '@deepseek-ai/cordis';
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots';
 import { SkillRegistry } from '@deepseek-ai/dsh-skill';
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt';
-import * as plugin from '../lib/index.js';
+import manifest from '../package.json' with { type: 'json' };
 import { definitions } from '../lib/catalog.js';
 import { previewFiles } from '../lib/preview-manifest.js';
 import { createPreviewHandler } from '../lib/preview-assets.js';
@@ -44,6 +45,10 @@ test('all 16 templates include valid bilingual source and matching previews', as
 });
 
 test('Cordis loads the single bundle, scopes PPT mode, and exports an editable deck', async t => {
+  const schema = yaml.DEFAULT_SCHEMA.extend(new yaml.Type('tag:yaml.org,2002:js', { kind: 'scalar' }));
+  const [{ insert: [entry] }] = yaml.load(await readFile(path.join(root, 'cordis.patch.yml'), 'utf8'), { schema });
+  assert.equal(entry.name, manifest.name);
+  const plugin = await import(entry.name);
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'dsh-ppt-test-'));
   t.after(() => rm(scratch, { recursive: true, force: true }));
   const workspace = path.join(scratch, 'workspace');
@@ -139,7 +144,7 @@ test('public DSH input dock supports toggling PPT and choosing a template withou
   const source = await readFile(path.join(root, 'lib/client.js'), 'utf8');
   dom.window.__ModuleLoader__ = { load: value => { entry = value; } };
   vm.runInNewContext(source, { window: dom.window, document: dom.window.document, AbortController });
-  assert.equal(entry.id, 'dsh-ppt');
+  assert.equal(entry.id, manifest.name);
   const require = createRequire(import.meta.url);
   const React = require('react');
   const { createRoot } = require('react-dom/client');

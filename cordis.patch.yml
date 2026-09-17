@@ -3,6 +3,6 @@
 # shipped Web roster until a profile explicitly adds this package.
 - insert:
     - id: dsh-ppt
-      name: 'dsh-ppt'
+      name: '@cola1900/dsh-ppt'
       config:
         root: !!js dshHomePath('kimi-ppt')

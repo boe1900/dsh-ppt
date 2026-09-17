@@ -5,11 +5,19 @@
 - 16 套模板、192 个版式，保留英文/中文 PPTD 示例和本地预览图。
 - 仅在会话启用 PPT 模式时自动注入创作指引。
 - 保留原有文件授权、路径限制、写入哈希检查、版本记录和导出校验。
-- 提供 `dsh-pptd` 命令行和 `dsh-ppt/pptd` JavaScript API。
+- 提供 `dsh-pptd` 命令行和 `@cola1900/dsh-ppt/pptd` JavaScript API。
 
 ## 安装
 
 需要 Node.js `^22.19.0 || >=24.0.0`，以及提供标准会话输入框插槽的 DSH Web / DSH Desktop。提取基线使用 DSH `0.1.5-rc.2`。
+
+从公共 npm 安装到目标 DSH profile：
+
+```sh
+dsh plugin --profile web add @cola1900/dsh-ppt
+```
+
+也可以从本仓库构建本地安装包：
 
 ```sh
 cd /path/to/dsh-ppt
@@ -21,7 +29,7 @@ npm pack
 将生成的包加入目标 DSH profile：
 
 ```sh
-dsh plugin --profile web add /absolute/path/to/dsh-ppt/dsh-ppt-0.1.2.tgz
+dsh plugin --profile web add /absolute/path/to/dsh-ppt/cola1900-dsh-ppt-0.1.2.tgz
 ```
 
 把 `web` 替换为实际 profile，然后重启该 profile。新会话输入框上方启用 **PPT**，选择模板并描述需求。按钮、选中模板缩略图和可滚动模板列表使用官方 `conversation.input.dock` 插槽，无需 Desktop 的输入框补丁。
