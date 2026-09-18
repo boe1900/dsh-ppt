@@ -5,7 +5,6 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react = require("react");
-		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		//#region ../office-ppt/src/protocol.ts
 		/**
@@ -24,25 +23,42 @@ window.__ModuleLoader__.load({
 		const CURATED_TEMPLATE_PREVIEWS = /* GENERATED_PPT_PREVIEWS */ {};
 		//#endregion
 		//#region \0dsh-css:ppt-composer.css.mjs
-		const css = "._2S_x-q_modeRoot{box-sizing:border-box;width:100%;padding:0 var(--dsh-composer-side-clearance);position:relative}._2S_x-q_modeRow{flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:8px;min-height:32px;display:flex}._2S_x-q_modeChip{border:1px solid var(--dsw-alias-border-l2-darkmode-thin);color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border-radius:999px;align-items:center;gap:6px;padding:7px 13px;font-size:12px;line-height:16px;display:inline-flex}._2S_x-q_modeChip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._2S_x-q_modeChip[data-selected=true]{border-color:color-mix(in srgb, var(--dsw-alias-state-business-primary) 55%, transparent);background:color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);color:var(--dsw-alias-state-business-primary)}._2S_x-q_templatePanel{box-sizing:border-box;z-index:2;width:100%;max-width:calc(var(--dsh-composer-card-max-width) + 32px);height:var(--office-ppt-template-panel-height,calc(100dvh - 178px));max-height:var(--office-ppt-template-panel-height,calc(100dvh - 178px));background:0 0;flex-direction:column;margin-top:8px;display:flex;position:absolute;top:100%;left:50%;overflow:hidden;transform:translate(-50%)}._2S_x-q_modeRoot[data-placement=fixed]{height:0;overflow:visible}._2S_x-q_modeRoot[data-placement=fixed] ._2S_x-q_templatePanel{max-height:none;top:0}._2S_x-q_modeRoot[data-placement=fixed] ._2S_x-q_templateViewport{overscroll-behavior:contain;flex:auto;padding-bottom:12px;overflow-y:auto}._2S_x-q_templateToolbar{z-index:2;background:0 0;flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:38px;display:flex;position:relative}._2S_x-q_templateViewport{box-sizing:border-box;overscroll-behavior:contain;scrollbar-width:none;min-height:0;padding-bottom:12px;overflow-y:auto}._2S_x-q_templateViewport::-webkit-scrollbar{display:none}._2S_x-q_categoryTabs{scrollbar-width:none;gap:4px;min-width:0;display:flex;overflow-x:auto}._2S_x-q_categoryTabs::-webkit-scrollbar{display:none}._2S_x-q_categoryTabs button{color:var(--dsw-alias-label-caption);font:inherit;cursor:pointer;background:0 0;border:0;border-radius:999px;flex:none;padding:5px 10px;font-size:11px;line-height:16px}._2S_x-q_categoryTabs button:hover{color:var(--dsw-alias-label-primary)}._2S_x-q_categoryTabs button[data-selected=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._2S_x-q_templateGrid{background:0 0;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px;display:grid}._2S_x-q_templateCard{min-width:0;min-height:0;position:relative}._2S_x-q_templateSelect{width:100%;min-width:0;color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:0;outline:0;flex-direction:column;padding:0;display:flex}._2S_x-q_previewViewport,._2S_x-q_selectionPreview{container-type:inline-size}._2S_x-q_previewViewport{aspect-ratio:16/9;border:2px solid #0000;border-radius:9px;width:100%;transition:border-color .12s,transform .12s;display:block;position:relative;overflow:hidden}._2S_x-q_previewViewport:after{content:\"\";position:absolute;inset:0;z-index:2;border-radius:7px;box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-label-primary) 25%, transparent);pointer-events:none}._2S_x-q_previewViewport>._2S_x-q_preview{aspect-ratio:auto;width:100%;height:100%;animation:.18s _2S_x-q_previewReveal}@keyframes _2S_x-q_previewReveal{0%{opacity:.72}to{opacity:1}}._2S_x-q_templateCard:hover ._2S_x-q_previewViewport{transform:translateY(-1px)}._2S_x-q_templateSelect:active ._2S_x-q_previewViewport{transform:scale(.985)}._2S_x-q_templateCard[data-selected=true] ._2S_x-q_previewViewport{border-color:var(--dsw-alias-state-business-primary)}._2S_x-q_templateSelect:focus-visible ._2S_x-q_previewViewport{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}._2S_x-q_templateName{text-align:center;text-overflow:ellipsis;white-space:nowrap;padding-top:5px;font-size:12px;line-height:16px;overflow:hidden}._2S_x-q_templateCard[data-selected=true] ._2S_x-q_templateName{color:var(--dsw-alias-label-primary)}._2S_x-q_panelState{min-height:160px;color:var(--dsw-alias-label-tertiary);place-items:center;gap:10px;font-size:12px;display:grid}._2S_x-q_templateError{border:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, transparent);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);color:var(--dsw-alias-state-error-primary);border-radius:8px;margin-bottom:8px;padding:7px 10px;font-size:11px;line-height:16px}._2S_x-q_retryButton{border:1px solid var(--dsw-alias-border-l2-darkmode-thin);color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border-radius:999px;padding:6px 12px}._2S_x-q_retryButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._2S_x-q_selection{align-items:flex-start;display:flex}._2S_x-q_selectionPreview{aspect-ratio:16/9;transform-origin:50%;flex:none;width:clamp(76px,10vw,92px);transition:transform .2s cubic-bezier(.34,1.56,.64,1);display:block;position:relative;transform:rotate(-3deg)scale(1)}._2S_x-q_selectionFrame{border:2px solid var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base);border-radius:9px;width:100%;height:100%;display:block;overflow:hidden;box-shadow:0 4px 14px #0000002e}._2S_x-q_selectionRemove{z-index:2;color:#fff;opacity:0;pointer-events:none;cursor:pointer;background:#111111e0;border:1px solid #ffffff4d;border-radius:50%;place-items:center;width:20px;height:20px;padding:0;font:500 15px/1 ui-sans-serif,system-ui,sans-serif;transition:opacity .12s,transform .12s;display:grid;position:absolute;top:-8px;right:-8px;transform:rotate(3deg)scale(.88);box-shadow:0 3px 10px #00000047}._2S_x-q_selectionPreview:hover ._2S_x-q_selectionRemove,._2S_x-q_selectionPreview:focus-within ._2S_x-q_selectionRemove{opacity:1;pointer-events:auto;transform:rotate(3deg)scale(1)}._2S_x-q_selectionRemove:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}._2S_x-q_preview{box-sizing:border-box;aspect-ratio:16/9;background:var(--office-bg);color:var(--office-text);flex-direction:column;justify-content:center;padding:12% 10%;display:flex;position:relative;overflow:hidden}._2S_x-q_preview[data-source-preview=true]{background:#fff;padding:0}._2S_x-q_preview[data-source-preview=true]:before,._2S_x-q_preview[data-source-preview=true]:after{display:none}._2S_x-q_previewImage{object-fit:cover;width:100%;height:100%;display:block;position:absolute;inset:0}._2S_x-q_preview:before,._2S_x-q_preview:after{content:\"\";pointer-events:none;position:absolute}._2S_x-q_preview:before{border-left:1px solid color-mix(in srgb, var(--office-accent) 35%, transparent);background:color-mix(in srgb, var(--office-surface) 92%, transparent);width:34%;height:100%;top:0;right:0}._2S_x-q_preview:after{background:var(--office-accent);width:18%;height:clamp(1px,1.3cqi,3px);bottom:13%;right:8%}._2S_x-q_previewAccent{background:var(--office-accent);width:18%;height:clamp(1px,1.3cqi,3px);position:absolute;top:16%;left:10%}._2S_x-q_preview strong,._2S_x-q_preview small{z-index:1;text-overflow:ellipsis;white-space:nowrap;width:66%;display:block;position:relative;overflow:hidden}._2S_x-q_preview strong{margin-top:8%;font-size:clamp(4px,6cqi,14px);font-weight:650;line-height:1.12}._2S_x-q_preview small{color:var(--office-muted);margin-top:4px;font-size:clamp(3px,3.4cqi,8px)}._2S_x-q_preview[data-variant=blue-professional]:before{clip-path:polygon(25% 0,100% 0,100% 100%,0 100%);background:var(--office-surface);border:0;width:40%}._2S_x-q_preview[data-variant=blue-professional]:after{width:15%;height:2px;bottom:14%;right:8%}._2S_x-q_preview[data-variant=editorial-forest]{background:var(--office-surface);color:var(--office-accent);justify-content:flex-end;padding:10%;font-family:Georgia,Times New Roman,serif}._2S_x-q_preview[data-variant=editorial-forest]:before{aspect-ratio:1;border:1px solid var(--office-accent);background:0 0;border-radius:50%;width:16%;height:auto;top:11%;right:9%}._2S_x-q_preview[data-variant=editorial-forest]:after{background:var(--office-accent);width:80%;height:1px;bottom:10%;right:10%}._2S_x-q_preview[data-variant=editorial-forest] ._2S_x-q_previewAccent{background:var(--office-accent);width:26%;height:1px;top:13%}._2S_x-q_preview[data-variant=editorial-forest] strong,._2S_x-q_preview[data-variant=editorial-forest] small{width:78%}._2S_x-q_preview[data-variant=editorial-forest] strong{margin-bottom:11%;font-size:clamp(5px,7.4cqi,17px);font-weight:500}._2S_x-q_preview[data-variant=editorial-forest] small{color:var(--office-bg);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;position:absolute;top:16%;left:10%}._2S_x-q_preview[data-variant=signal]{background:var(--office-bg);color:var(--office-text);font-family:Georgia,Times New Roman,serif}._2S_x-q_preview[data-variant=signal]:before{background-image:linear-gradient(color-mix(in srgb, var(--office-secondary) 55%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--office-secondary) 55%, transparent) 1px, transparent 1px);opacity:.45;background-size:18% 31%;border:0;width:100%;height:100%;inset:0}._2S_x-q_preview[data-variant=signal]:after{background:var(--office-secondary);width:80%;height:1px;bottom:15%;left:10%;right:auto}._2S_x-q_preview[data-variant=signal] ._2S_x-q_previewAccent{background:var(--office-accent);width:14%;height:1px;top:18%}._2S_x-q_preview[data-variant=signal] strong{font-size:clamp(5px,6.8cqi,16px);font-weight:600}._2S_x-q_preview[data-variant=signal] small{color:var(--office-muted);letter-spacing:.08em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}._2S_x-q_preview[data-variant=orange-data]{color:#111;background:#fff;justify-content:flex-start;padding:15% 8%;font-family:Arial,sans-serif}._2S_x-q_preview[data-variant=orange-data]:before{background:linear-gradient(90deg, var(--office-accent) 0 25%, var(--office-secondary) 25% 50%, #f19309 50% 75%, #f9c22b 75%) 0 21% / 100% 28% no-repeat, linear-gradient(#f2f2f2 0 0) 0 70% / 72% 24% no-repeat;border:0;border-top:clamp(1px,.9cqi,2px) solid #111;width:84%;height:45%;inset:8% 8% auto}._2S_x-q_preview[data-variant=orange-data]:after{background:#111;width:84%;height:11%;bottom:11%;right:8%}._2S_x-q_preview[data-variant=orange-data] ._2S_x-q_previewAccent{background:var(--office-accent);width:22%;height:clamp(1px,.9cqi,2px);top:8%;left:8%}._2S_x-q_preview[data-variant=orange-data] strong,._2S_x-q_preview[data-variant=orange-data] small{z-index:2;width:52%}._2S_x-q_preview[data-variant=orange-data] strong{margin-top:10%;font-size:clamp(4px,5.8cqi,13px)}._2S_x-q_preview[data-variant=orange-data] small{color:#5b626d;letter-spacing:.06em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}._2S_x-q_preview[data-variant=custom]:before{background:linear-gradient(145deg, var(--office-surface), var(--office-secondary));width:40%}._2S_x-q_preview[data-page=\"1\"],._2S_x-q_preview[data-page=\"2\"]{background:color-mix(in srgb, var(--office-bg) 92%, var(--office-surface));color:var(--office-text);font-family:var(--font-sans,ui-sans-serif, system-ui, sans-serif);justify-content:flex-start;padding:8% 8% 7%}._2S_x-q_preview[data-page=\"1\"]:before,._2S_x-q_preview[data-page=\"2\"]:before{background:linear-gradient(90deg, color-mix(in srgb, var(--office-accent) 13%, transparent) 1px, transparent 1px), linear-gradient(color-mix(in srgb, var(--office-accent) 13%, transparent) 1px, transparent 1px);clip-path:none;opacity:.48;background-size:20% 25%;border:0;width:100%;height:100%;inset:0}._2S_x-q_preview[data-page=\"1\"]:after,._2S_x-q_preview[data-page=\"2\"]:after{background:var(--office-accent);width:18%;height:2px;top:8%;bottom:auto;right:8%}._2S_x-q_preview[data-page=\"1\"] ._2S_x-q_previewAccent,._2S_x-q_preview[data-page=\"2\"] ._2S_x-q_previewAccent{background:color-mix(in srgb, var(--office-muted) 38%, transparent);width:84%;height:1px;top:auto;bottom:7%;left:8%}._2S_x-q_preview[data-page=\"1\"] strong,._2S_x-q_preview[data-page=\"2\"] strong{width:78%;margin-top:3%;font-size:clamp(4px,5.3cqi,12px);line-height:1.12}._2S_x-q_previewEyebrow{letter-spacing:.06em;width:74%!important;color:var(--office-muted)!important;margin:0!important;font:500 clamp(3px,2.7cqi,6px)/1.1 ui-monospace,SFMono-Regular,Menlo,monospace!important}._2S_x-q_previewKpis{z-index:1;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;width:100%;margin-top:auto;display:grid;position:relative}._2S_x-q_previewKpis>span{border:1px solid color-mix(in srgb, var(--office-accent) 18%, transparent);background:color-mix(in srgb, var(--office-surface) 88%, transparent);border-radius:3px;justify-content:space-between;align-items:baseline;min-width:0;padding:7% 8%;display:flex}._2S_x-q_previewKpis b{font-size:clamp(4px,4.8cqi,11px);font-weight:700}._2S_x-q_previewKpis i{color:var(--office-muted);font:clamp(2px,2.2cqi,5px)/1 ui-monospace,monospace}._2S_x-q_previewFooter,._2S_x-q_previewInsight{z-index:1;width:100%;color:var(--office-muted);text-overflow:ellipsis;white-space:nowrap;margin-top:4px;font-size:clamp(2px,2.3cqi,5px);line-height:1.15;display:block;position:relative;overflow:hidden}._2S_x-q_previewChart{z-index:1;border-bottom:1px solid color-mix(in srgb, var(--office-muted) 34%, transparent);align-items:flex-end;gap:7%;height:43%;margin-top:auto;padding:4% 5% 0;display:flex;position:relative}._2S_x-q_previewChart i{background:var(--office-accent);border-radius:2px 2px 0 0;width:11%}._2S_x-q_previewChart i:first-child{opacity:.52;height:28%}._2S_x-q_previewChart i:nth-child(2){opacity:.64;height:46%}._2S_x-q_previewChart i:nth-child(3){opacity:.76;height:41%}._2S_x-q_previewChart i:nth-child(4){opacity:.88;height:72%}._2S_x-q_previewChart i:nth-child(5){height:91%}@media (prefers-reduced-motion:reduce){._2S_x-q_previewViewport,._2S_x-q_selectionPreview{transition:none}._2S_x-q_previewViewport>._2S_x-q_preview{animation:none}}";
+		const css = "._2S_x-q_modeRoot{box-sizing:border-box;width:100%;padding:0 var(--dsh-composer-side-clearance);position:relative}._2S_x-q_modeRow{flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:8px;min-height:32px;display:flex}._2S_x-q_modeChip{border:1px solid var(--dsw-alias-border-l2-darkmode-thin);color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border-radius:999px;align-items:center;gap:6px;padding:7px 13px;font-size:12px;line-height:16px;display:inline-flex}._2S_x-q_modeChip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._2S_x-q_modeChip[data-selected=true]{border-color:color-mix(in srgb, var(--dsw-alias-label-primary) 55%, transparent);background:color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent);color:var(--dsw-alias-label-primary)}._2S_x-q_templatePanel{box-sizing:border-box;z-index:2;width:100%;max-width:calc(var(--dsh-composer-card-max-width) + 32px);height:var(--office-ppt-template-panel-height,calc(100dvh - 178px));max-height:var(--office-ppt-template-panel-height,calc(100dvh - 178px));background:0 0;flex-direction:column;margin-top:8px;display:flex;position:absolute;top:100%;left:50%;overflow:hidden;transform:translate(-50%)}._2S_x-q_modeRoot[data-placement=fixed]{height:0;overflow:visible}._2S_x-q_modeRoot[data-placement=fixed] ._2S_x-q_templatePanel{max-height:none;top:0}._2S_x-q_modeRoot[data-placement=fixed] ._2S_x-q_templateViewport{overscroll-behavior:contain;flex:auto;padding-bottom:12px;overflow-y:auto}._2S_x-q_templateToolbar{z-index:2;background:0 0;flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:38px;display:flex;position:relative}._2S_x-q_templateViewport{box-sizing:border-box;overscroll-behavior:contain;scrollbar-width:none;min-height:0;padding-bottom:12px;overflow-y:auto}._2S_x-q_templateViewport::-webkit-scrollbar{display:none}._2S_x-q_categoryTabs{scrollbar-width:none;gap:4px;min-width:0;display:flex;overflow-x:auto}._2S_x-q_categoryTabs::-webkit-scrollbar{display:none}._2S_x-q_categoryTabs button{color:var(--dsw-alias-label-caption);font:inherit;cursor:pointer;background:0 0;border:0;border-radius:999px;flex:none;padding:5px 10px;font-size:11px;line-height:16px}._2S_x-q_categoryTabs button:hover{color:var(--dsw-alias-label-primary)}._2S_x-q_categoryTabs button[data-selected=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._2S_x-q_templateGrid{background:0 0;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px;display:grid}._2S_x-q_templateCard{min-width:0;min-height:0;position:relative}._2S_x-q_templateSelect{width:100%;min-width:0;color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:0;outline:0;flex-direction:column;padding:0;display:flex}._2S_x-q_previewViewport,._2S_x-q_selectionPreview{container-type:inline-size}._2S_x-q_previewViewport{aspect-ratio:16/9;border:2px solid #0000;border-radius:9px;width:100%;transition:border-color .12s,transform .12s;display:block;position:relative;overflow:hidden}._2S_x-q_previewViewport:after{content:\"\";position:absolute;inset:0;z-index:2;border-radius:7px;box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-label-primary) 25%, transparent);pointer-events:none}._2S_x-q_previewViewport>._2S_x-q_preview{aspect-ratio:auto;width:100%;height:100%;animation:.18s _2S_x-q_previewReveal}@keyframes _2S_x-q_previewReveal{0%{opacity:.72}to{opacity:1}}._2S_x-q_templateCard:hover ._2S_x-q_previewViewport{transform:translateY(-1px)}._2S_x-q_templateSelect:active ._2S_x-q_previewViewport{transform:scale(.985)}._2S_x-q_templateCard[data-selected=true] ._2S_x-q_previewViewport{border-color:var(--dsw-alias-label-primary)}._2S_x-q_templateSelect:focus-visible ._2S_x-q_previewViewport{outline:2px solid var(--dsw-alias-label-primary);outline-offset:2px}._2S_x-q_templateName{text-align:center;text-overflow:ellipsis;white-space:nowrap;padding-top:5px;font-size:12px;line-height:16px;overflow:hidden}._2S_x-q_templateCard[data-selected=true] ._2S_x-q_templateName{color:var(--dsw-alias-label-primary)}._2S_x-q_panelState{min-height:160px;color:var(--dsw-alias-label-tertiary);place-items:center;gap:10px;font-size:12px;display:grid}._2S_x-q_templateError{border:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, transparent);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);color:var(--dsw-alias-state-error-primary);border-radius:8px;margin-bottom:8px;padding:7px 10px;font-size:11px;line-height:16px}._2S_x-q_retryButton{border:1px solid var(--dsw-alias-border-l2-darkmode-thin);color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;background:0 0;border-radius:999px;padding:6px 12px}._2S_x-q_retryButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._2S_x-q_selection{align-items:flex-start;display:flex}._2S_x-q_selectionPreview{aspect-ratio:16/9;transform-origin:50%;flex:none;width:clamp(76px,10vw,92px);transition:transform .2s cubic-bezier(.34,1.56,.64,1);display:block;position:relative;transform:rotate(-3deg)scale(1)}._2S_x-q_selectionFrame{border:2px solid var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);border-radius:9px;width:100%;height:100%;display:block;overflow:hidden;box-shadow:0 4px 14px #0000002e}._2S_x-q_selectionRemove{z-index:2;color:#fff;opacity:0;pointer-events:none;cursor:pointer;background:#111111e0;border:1px solid #ffffff4d;border-radius:50%;place-items:center;width:20px;height:20px;padding:0;font:500 15px/1 ui-sans-serif,system-ui,sans-serif;transition:opacity .12s,transform .12s;display:grid;position:absolute;top:-8px;right:-8px;transform:rotate(3deg)scale(.88);box-shadow:0 3px 10px #00000047}._2S_x-q_selectionPreview:hover ._2S_x-q_selectionRemove,._2S_x-q_selectionPreview:focus-within ._2S_x-q_selectionRemove{opacity:1;pointer-events:auto;transform:rotate(3deg)scale(1)}._2S_x-q_selectionRemove:focus-visible{outline:2px solid var(--dsw-alias-label-primary);outline-offset:2px}._2S_x-q_preview{box-sizing:border-box;aspect-ratio:16/9;background:var(--office-bg);color:var(--office-text);flex-direction:column;justify-content:center;padding:12% 10%;display:flex;position:relative;overflow:hidden}._2S_x-q_preview[data-source-preview=true]{background:#fff;padding:0}._2S_x-q_preview[data-source-preview=true]:before,._2S_x-q_preview[data-source-preview=true]:after{display:none}._2S_x-q_previewImage{object-fit:cover;width:100%;height:100%;display:block;position:absolute;inset:0}._2S_x-q_preview:before,._2S_x-q_preview:after{content:\"\";pointer-events:none;position:absolute}._2S_x-q_preview:before{border-left:1px solid color-mix(in srgb, var(--office-accent) 35%, transparent);background:color-mix(in srgb, var(--office-surface) 92%, transparent);width:34%;height:100%;top:0;right:0}._2S_x-q_preview:after{background:var(--office-accent);width:18%;height:clamp(1px,1.3cqi,3px);bottom:13%;right:8%}._2S_x-q_previewAccent{background:var(--office-accent);width:18%;height:clamp(1px,1.3cqi,3px);position:absolute;top:16%;left:10%}._2S_x-q_preview strong,._2S_x-q_preview small{z-index:1;text-overflow:ellipsis;white-space:nowrap;width:66%;display:block;position:relative;overflow:hidden}._2S_x-q_preview strong{margin-top:8%;font-size:clamp(4px,6cqi,14px);font-weight:650;line-height:1.12}._2S_x-q_preview small{color:var(--office-muted);margin-top:4px;font-size:clamp(3px,3.4cqi,8px)}._2S_x-q_preview[data-variant=blue-professional]:before{clip-path:polygon(25% 0,100% 0,100% 100%,0 100%);background:var(--office-surface);border:0;width:40%}._2S_x-q_preview[data-variant=blue-professional]:after{width:15%;height:2px;bottom:14%;right:8%}._2S_x-q_preview[data-variant=editorial-forest]{background:var(--office-surface);color:var(--office-accent);justify-content:flex-end;padding:10%;font-family:Georgia,Times New Roman,serif}._2S_x-q_preview[data-variant=editorial-forest]:before{aspect-ratio:1;border:1px solid var(--office-accent);background:0 0;border-radius:50%;width:16%;height:auto;top:11%;right:9%}._2S_x-q_preview[data-variant=editorial-forest]:after{background:var(--office-accent);width:80%;height:1px;bottom:10%;right:10%}._2S_x-q_preview[data-variant=editorial-forest] ._2S_x-q_previewAccent{background:var(--office-accent);width:26%;height:1px;top:13%}._2S_x-q_preview[data-variant=editorial-forest] strong,._2S_x-q_preview[data-variant=editorial-forest] small{width:78%}._2S_x-q_preview[data-variant=editorial-forest] strong{margin-bottom:11%;font-size:clamp(5px,7.4cqi,17px);font-weight:500}._2S_x-q_preview[data-variant=editorial-forest] small{color:var(--office-bg);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;position:absolute;top:16%;left:10%}._2S_x-q_preview[data-variant=signal]{background:var(--office-bg);color:var(--office-text);font-family:Georgia,Times New Roman,serif}._2S_x-q_preview[data-variant=signal]:before{background-image:linear-gradient(color-mix(in srgb, var(--office-secondary) 55%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--office-secondary) 55%, transparent) 1px, transparent 1px);opacity:.45;background-size:18% 31%;border:0;width:100%;height:100%;inset:0}._2S_x-q_preview[data-variant=signal]:after{background:var(--office-secondary);width:80%;height:1px;bottom:15%;left:10%;right:auto}._2S_x-q_preview[data-variant=signal] ._2S_x-q_previewAccent{background:var(--office-accent);width:14%;height:1px;top:18%}._2S_x-q_preview[data-variant=signal] strong{font-size:clamp(5px,6.8cqi,16px);font-weight:600}._2S_x-q_preview[data-variant=signal] small{color:var(--office-muted);letter-spacing:.08em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}._2S_x-q_preview[data-variant=orange-data]{color:#111;background:#fff;justify-content:flex-start;padding:15% 8%;font-family:Arial,sans-serif}._2S_x-q_preview[data-variant=orange-data]:before{background:linear-gradient(90deg, var(--office-accent) 0 25%, var(--office-secondary) 25% 50%, #f19309 50% 75%, #f9c22b 75%) 0 21% / 100% 28% no-repeat, linear-gradient(#f2f2f2 0 0) 0 70% / 72% 24% no-repeat;border:0;border-top:clamp(1px,.9cqi,2px) solid #111;width:84%;height:45%;inset:8% 8% auto}._2S_x-q_preview[data-variant=orange-data]:after{background:#111;width:84%;height:11%;bottom:11%;right:8%}._2S_x-q_preview[data-variant=orange-data] ._2S_x-q_previewAccent{background:var(--office-accent);width:22%;height:clamp(1px,.9cqi,2px);top:8%;left:8%}._2S_x-q_preview[data-variant=orange-data] strong,._2S_x-q_preview[data-variant=orange-data] small{z-index:2;width:52%}._2S_x-q_preview[data-variant=orange-data] strong{margin-top:10%;font-size:clamp(4px,5.8cqi,13px)}._2S_x-q_preview[data-variant=orange-data] small{color:#5b626d;letter-spacing:.06em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}._2S_x-q_preview[data-variant=custom]:before{background:linear-gradient(145deg, var(--office-surface), var(--office-secondary));width:40%}._2S_x-q_preview[data-page=\"1\"],._2S_x-q_preview[data-page=\"2\"]{background:color-mix(in srgb, var(--office-bg) 92%, var(--office-surface));color:var(--office-text);font-family:var(--font-sans,ui-sans-serif, system-ui, sans-serif);justify-content:flex-start;padding:8% 8% 7%}._2S_x-q_preview[data-page=\"1\"]:before,._2S_x-q_preview[data-page=\"2\"]:before{background:linear-gradient(90deg, color-mix(in srgb, var(--office-accent) 13%, transparent) 1px, transparent 1px), linear-gradient(color-mix(in srgb, var(--office-accent) 13%, transparent) 1px, transparent 1px);clip-path:none;opacity:.48;background-size:20% 25%;border:0;width:100%;height:100%;inset:0}._2S_x-q_preview[data-page=\"1\"]:after,._2S_x-q_preview[data-page=\"2\"]:after{background:var(--office-accent);width:18%;height:2px;top:8%;bottom:auto;right:8%}._2S_x-q_preview[data-page=\"1\"] ._2S_x-q_previewAccent,._2S_x-q_preview[data-page=\"2\"] ._2S_x-q_previewAccent{background:color-mix(in srgb, var(--office-muted) 38%, transparent);width:84%;height:1px;top:auto;bottom:7%;left:8%}._2S_x-q_preview[data-page=\"1\"] strong,._2S_x-q_preview[data-page=\"2\"] strong{width:78%;margin-top:3%;font-size:clamp(4px,5.3cqi,12px);line-height:1.12}._2S_x-q_previewEyebrow{letter-spacing:.06em;width:74%!important;color:var(--office-muted)!important;margin:0!important;font:500 clamp(3px,2.7cqi,6px)/1.1 ui-monospace,SFMono-Regular,Menlo,monospace!important}._2S_x-q_previewKpis{z-index:1;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;width:100%;margin-top:auto;display:grid;position:relative}._2S_x-q_previewKpis>span{border:1px solid color-mix(in srgb, var(--office-accent) 18%, transparent);background:color-mix(in srgb, var(--office-surface) 88%, transparent);border-radius:3px;justify-content:space-between;align-items:baseline;min-width:0;padding:7% 8%;display:flex}._2S_x-q_previewKpis b{font-size:clamp(4px,4.8cqi,11px);font-weight:700}._2S_x-q_previewKpis i{color:var(--office-muted);font:clamp(2px,2.2cqi,5px)/1 ui-monospace,monospace}._2S_x-q_previewFooter,._2S_x-q_previewInsight{z-index:1;width:100%;color:var(--office-muted);text-overflow:ellipsis;white-space:nowrap;margin-top:4px;font-size:clamp(2px,2.3cqi,5px);line-height:1.15;display:block;position:relative;overflow:hidden}._2S_x-q_previewChart{z-index:1;border-bottom:1px solid color-mix(in srgb, var(--office-muted) 34%, transparent);align-items:flex-end;gap:7%;height:43%;margin-top:auto;padding:4% 5% 0;display:flex;position:relative}._2S_x-q_previewChart i{background:var(--office-accent);border-radius:2px 2px 0 0;width:11%}._2S_x-q_previewChart i:first-child{opacity:.52;height:28%}._2S_x-q_previewChart i:nth-child(2){opacity:.64;height:46%}._2S_x-q_previewChart i:nth-child(3){opacity:.76;height:41%}._2S_x-q_previewChart i:nth-child(4){opacity:.88;height:72%}._2S_x-q_previewChart i:nth-child(5){height:91%}@media (prefers-reduced-motion:reduce){._2S_x-q_previewViewport,._2S_x-q_selectionPreview{transition:none}._2S_x-q_previewViewport>._2S_x-q_preview{animation:none}}";
 		const tagId = "dsh-ppt/OfficePptHero.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
 			tag.dataset.plugin = "dsh-ppt";
 			tag.dataset.pluginCss = tagId;
 			tag.textContent = css + `
-button[data-desktop-ppt]{color:var(--dsw-alias-label-primary);transition:background-color .18s ease,color .18s ease,transform .18s ease}
-button[data-desktop-ppt] .desktop-ppt-icon{width:18px;height:18px;flex:none;transition:transform .18s ease}
-button[data-desktop-ppt][data-selected=true]{background:#262626!important;color:#fafafa!important;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--dsw-alias-label-primary) 30%,#262626)}
-button[data-desktop-ppt][data-selected=true] .desktop-ppt-icon{transform:translateY(-.5px)}
-button[data-desktop-ppt]:active:not(:disabled){transform:translateY(1px)}
-button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-primary)!important;outline-offset:2px}
-.dsh-ppt-composer{box-sizing:border-box;width:100%;padding:0 var(--dsh-composer-side-clearance,16px)}
-.dsh-ppt-controls{display:flex;align-items:center;gap:16px;min-height:44px;padding:8px 0}
-._2S_x-q_modeRoot[data-placement=inline]{padding:0}
-._2S_x-q_modeRoot[data-placement=inline] ._2S_x-q_templatePanel{position:relative;top:auto;left:auto;transform:none;width:100%;height:auto;max-height:min(42vh,360px);margin:0 0 8px}
-@media(max-width:600px){.dsh-ppt-composer ._2S_x-q_templateGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(prefers-reduced-motion:reduce){button[data-desktop-ppt],button[data-desktop-ppt] .desktop-ppt-icon{transition:none}}
+.dsh-ppt-control{display:inline-flex;align-items:center;flex:none;min-width:0}
+.dsh-ppt-trigger{box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;max-width:220px;min-height:30px;padding:5px 9px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,#626875);font:inherit;font-size:12px;line-height:18px;cursor:pointer}
+.dsh-ppt-trigger:hover,.dsh-ppt-trigger[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover,#f3f4f6)}
+.dsh-ppt-trigger[data-selected=true]{color:var(--dsw-alias-label-primary,#20232a);background:var(--dsw-alias-interactive-bg-hover,#f3f4f6)}
+.dsh-ppt-trigger-mode{flex:none;white-space:nowrap}
+.dsh-ppt-trigger-label{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dsh-ppt-trigger .desktop-ppt-icon{width:16px;height:16px;flex:none}
+.dsh-ppt-chevron{font-size:10px;flex:none;opacity:.7}
+.dsh-ppt-panel{order:1;align-self:center;display:flex;flex-direction:column;flex-shrink:0;margin:0;padding:0;box-sizing:border-box;width:calc(100% - 2 * var(--dsh-composer-side-clearance,16px));max-height:400px;overflow:hidden;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#e4e6eb);border-radius:14px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#20232a);box-shadow:0 12px 40px #0000001a,0 2px 8px #00000008;font:13px/1.5 var(--font-sans,system-ui,sans-serif)}
+.dsh-ppt-panel-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 8px;flex:none}
+.dsh-ppt-panel-title{font-size:14px;font-weight:600;margin:0}
+.dsh-ppt-panel-actions{display:flex;align-items:center;gap:8px}
+.dsh-ppt-exit,.dsh-ppt-close{border:0;background:transparent;color:var(--dsw-alias-label-secondary,#626875);font:inherit;cursor:pointer;border-radius:6px;padding:4px 8px}
+.dsh-ppt-close{font-size:20px;line-height:20px;padding:2px 7px}
+.dsh-ppt-exit:hover,.dsh-ppt-close:hover{background:var(--dsw-alias-interactive-bg-hover,#f3f4f6)}
+.dsh-ppt-panel ._2S_x-q_categoryTabs{padding:0 12px 10px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l2-darkmode-thin,#eceef1)}
+.dsh-ppt-panel ._2S_x-q_categoryTabs button{font-size:12px;padding:4px 9px}
+.dsh-ppt-panel ._2S_x-q_categoryTabs button[data-selected=true]{color:var(--dsw-alias-label-primary,#20232a);background:var(--dsw-alias-interactive-bg-hover,#f3f4f6)}
+.dsh-ppt-panel ._2S_x-q_templateViewport{padding:14px 16px;overflow-y:auto;scrollbar-width:thin;min-height:0;flex:1}
+.dsh-ppt-panel ._2S_x-q_templateViewport::-webkit-scrollbar{display:block;width:5px}
+.dsh-ppt-panel ._2S_x-q_templateViewport::-webkit-scrollbar-thumb{background:#c5c9d0;border-radius:3px}
+.dsh-ppt-panel ._2S_x-q_templateGrid{gap:14px}
+.dsh-ppt-panel ._2S_x-q_templateName{font-size:12px;text-align:left;padding:6px 2px 0;width:100%;box-sizing:border-box}
+.dsh-ppt-panel ._2S_x-q_previewViewport{border-radius:8px}
+.dsh-ppt-selected{position:absolute;top:8px;right:8px;z-index:3;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-label-primary,#20232a);color:var(--dsw-alias-bg-base,#fff);font-size:12px;box-shadow:0 1px 4px #0002;pointer-events:none}
+.dsh-ppt-trigger:focus-visible,.dsh-ppt-panel button:focus-visible{outline:2px solid var(--dsw-alias-label-primary,#20232a);outline-offset:2px}
+.dsh-ppt-panel button:disabled{cursor:wait;opacity:.55}
+.dsh-ppt-panel-notice{margin:0 16px 8px;color:var(--dsw-alias-label-secondary,#626875);font-size:12px}
+@media(max-width:600px){.dsh-ppt-panel ._2S_x-q_templateGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.dsh-ppt-trigger{max-width:170px}}
 `;
 			document.head.appendChild(tag);
 		}
@@ -89,25 +105,21 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 			"promotion",
 			"academic", "editorial"
 		];
-		const SELECTED_PREVIEW_ENTRY_TRANSFORM = "rotate(-3deg) scale(.92)";
-		const SELECTED_PREVIEW_REST_TRANSFORM = "rotate(-3deg) scale(1)";
-		const SELECTED_PREVIEW_DURATION_MS = 200;
 		const TEMPLATE_LOAD_TIMEOUT_MS = 8e3;
 		const FALLBACK_TEMPLATE_PREVIEW_PAGE_COUNT = 3;
 		const TEMPLATE_PREVIEW_AUTOPLAY_START_MS = 420;
 		const TEMPLATE_PREVIEW_AUTOPLAY_INTERVAL_MS = 900;
 		const TEMPLATE_PREVIEW_WHEEL_LOCK_MS = 180;
-		const TEMPLATE_DOCK_BOTTOM_PX = 12;
-		const TEMPLATE_PANEL_MIN_HEIGHT_PX = 200;
 		const EMPTY_STATE = {
 			activeMode: null,
+			pickerOpen: false,
 			loading: false,
 			templates: [],
 			selectedId: null,
             notice: false,
 			error: ""
 		};
-		/** Session-keyed presentation state shared by the action tray and composer accessory. */
+		/** Session-keyed presentation state shared by the toolbar button and template panel. */
 		var OfficePptHeroStore = class {
 			constructor() {
 				this.states = /* @__PURE__ */ new Map();
@@ -124,6 +136,9 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 					listeners.delete(listener);
 					if (listeners.size === 0) this.listeners.delete(sessionId);
 				};
+			}
+			setPickerOpen(sessionId, pickerOpen) {
+				this.update(sessionId, current => ({ ...current, pickerOpen }));
 			}
 			setMode(sessionId, activeMode) {
 				this.update(sessionId, (current) => ({
@@ -277,7 +292,7 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 				}, page)
 			});
 		}
-		function TemplateCard({ template, selected, choose }) {
+		function TemplateCard({ template, selected, choose, disabled }) {
 			const [page, setPage] = (0, react.useState)(0);
 			const [hovered, setHovered] = (0, react.useState)(false);
 			const card = (0, react.useRef)(null);
@@ -355,10 +370,12 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 					className: OfficePptHero_module_css_default.templateSelect,
 					"aria-label": template.name,
 					"aria-pressed": selected,
+					disabled,
 					onClick: () => {
 						choose(template);
 					},
 					children: [
+						selected && react_jsx_runtime.jsx("span", { className: "dsh-ppt-selected", "aria-hidden": true, children: "✓" }),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(TemplatePreviewDeck, {
 							template,
 							page
@@ -390,95 +407,6 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 				});
 			});
 		}
-		function deselectTemplate(client, mode, sessionId, activeMode) {
-			mode.setLoading(sessionId, true);
-			client.call("template/deselect").then(() => {
-				return client.call("presentation/mode", { mode: activeMode });
-			}).then(() => {
-				mode.deselect(sessionId, activeMode);
-			}).catch((reason) => {
-				mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason));
-			});
-		}
-		function selectPresentationMode(client, mode, sessionId, activeMode) {
-			mode.setMode(sessionId, activeMode);
-			client.call("presentation/mode", { mode: activeMode }).catch((reason) => {
-				mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason));
-			});
-		}
-		/** Compact selected-template thumbnail inside the resident input card. */
-		function OfficePptInputAccessory({ client, mode, sessionId, t }) {
-			const state = useMode(mode, sessionId);
-			const selected = state.templates.find((template) => template.id === state.selectedId);
-			const selectedId = state.activeMode !== null && selected !== void 0 ? selected.id : null;
-			const preview = (0, react.useRef)(null);
-			const frame = (0, react.useRef)(null);
-			const settleTimer = (0, react.useRef)(null);
-			const previousId = (0, react.useRef)(selectedId);
-			(0, react.useLayoutEffect)(() => {
-				if (selectedId === null) {
-					if (frame.current !== null) window.cancelAnimationFrame(frame.current);
-					if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
-					frame.current = null;
-					settleTimer.current = null;
-					previousId.current = null;
-					return;
-				}
-				if (previousId.current === selectedId || preview.current === null) return;
-				previousId.current = selectedId;
-				const element = preview.current;
-				const from = frame.current !== null || settleTimer.current !== null ? window.getComputedStyle(element).transform : SELECTED_PREVIEW_ENTRY_TRANSFORM;
-				if (frame.current !== null) window.cancelAnimationFrame(frame.current);
-				if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
-				frame.current = null;
-				settleTimer.current = null;
-				element.style.transition = "none";
-				element.style.transform = from;
-				if (reducedMotionPreferred()) {
-					element.style.removeProperty("transition");
-					element.style.removeProperty("transform");
-					return;
-				}
-				element.getBoundingClientRect();
-				const settle = () => {
-					element.style.removeProperty("transition");
-					element.style.transform = SELECTED_PREVIEW_REST_TRANSFORM;
-					frame.current = null;
-					settleTimer.current = window.setTimeout(() => {
-						element.style.removeProperty("transform");
-						settleTimer.current = null;
-					}, SELECTED_PREVIEW_DURATION_MS);
-				};
-				if (typeof window.requestAnimationFrame === "function") frame.current = window.requestAnimationFrame(settle);
-				else settle();
-			}, [selectedId]);
-			(0, react.useEffect)(() => () => {
-				if (frame.current !== null) window.cancelAnimationFrame(frame.current);
-				if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
-			}, []);
-			if (state.activeMode === null || selected === void 0) return null;
-			const activeMode = state.activeMode;
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-				className: OfficePptHero_module_css_default.selection,
-				"aria-label": `${t("composer.selectedTemplate")}: ${selected.name}`,
-				children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					ref: preview,
-					className: OfficePptHero_module_css_default.selectionPreview,
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-						className: OfficePptHero_module_css_default.selectionFrame,
-						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(TemplatePreview, { template: selected })
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-						type: "button",
-						className: OfficePptHero_module_css_default.selectionRemove,
-						"aria-label": t("composer.removeTemplate"),
-						onClick: () => {
-							deselectTemplate(client, mode, sessionId, activeMode);
-						},
-						children: "×"
-					})]
-				})
-			});
-		}
 		/** Monochrome presentation screen used by both PPT mode controls. */
 		function DesktopPptIcon() {
 			return (0, react_jsx_runtime.jsxs)("svg", {
@@ -490,226 +418,105 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 				]
 			});
 		}
-		/** PPT option and template chooser shared by both Composer layouts. */
-		function OfficePptChooser({ client, mode, sessionId, t, placement, loadTemplates = true }) {
+		/** The picker is independent of PPT activation; closing it never changes the session. */
+		function OfficePptChooser({ client, mode, sessionId, t, placement }) {
 			const state = useMode(mode, sessionId);
-			const modeRootRef = (0, react.useRef)(null);
-			const templatePanelRef = (0, react.useRef)(null);
-			const templateViewportRef = (0, react.useRef)(null);
-			const [category, setCategory] = (0, react.useState)("all");
-			(0, react.useEffect)(() => {
-				if (!loadTemplates || state.loading || state.templates.length > 0 || state.error !== "") return;
+			const open = state.pickerOpen;
+			const setOpen = value => mode.setPickerOpen(sessionId, value);
+			const [category, setCategory] = react.useState("all");
+			const panel = react.useRef(null);
+			const panelId = `dsh-ppt-picker-${encodeURIComponent(sessionId)}`;
+			const triggerId = `${panelId}-trigger`;
+			const active = state.activeMode === "ppt";
+			const selected = state.templates.find(template => template.id === state.selectedId);
+			const label = active && selected ? `${t("mode.label")} · ${selected.name}` : t("mode.label");
+			const close = () => { setOpen(false); document.getElementById(triggerId)?.focus({ preventScroll: true }); };
+
+			react.useEffect(() => {
+				if (placement !== "trigger" || mode.snapshot(sessionId).loading || state.templates.length > 0 || state.error !== "") return;
 				mode.setLoading(sessionId, true);
-				loadTemplateState(client, t("templates.loadTimeout")).then((next) => {
-					const activeMode = mode.snapshot(sessionId).activeMode ?? (next.presentationMode === "ppt" ? "ppt" : null);
+				loadTemplateState(client, t("templates.loadTimeout")).then(next => {
 					mode.setTemplates(sessionId, next.templates);
-					if (activeMode === null) return;
-					mode.setMode(sessionId, activeMode);
-					const selected = next.templates.find((template) => template.id === next.selectedTemplateId && templateSupportsMode(template, "ppt"));
-					if (selected === void 0) {
-						mode.deselect(sessionId, activeMode);
-						return;
-					}
-					mode.select(sessionId, selected, activeMode);
-                    mode.setNotice(sessionId, next.templateMigration?.reason === "template-retired");
-				}).catch((reason) => {
-					mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason));
-				});
-			}, [
-				client,
-				loadTemplates,
-				mode,
-				sessionId,
-				state.error,
-				state.loading,
-				state.templates.length,
-				t
-			]);
-			const deselect = () => {
-				deselectTemplate(client, mode, sessionId, state.activeMode ?? "ppt");
-			};
-			const select = (template, activeMode = state.activeMode ?? "ppt") => {
+					const template = next.templates.find(item => item.id === next.selectedTemplateId);
+					const activeMode = next.presentationMode === "ppt" ? "ppt" : null;
+					if (template) mode.select(sessionId, template, activeMode);
+					else mode.deselect(sessionId, activeMode);
+					mode.setNotice(sessionId, next.templateMigration?.reason === "template-retired");
+				}).catch(reason => mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason)));
+			}, [client, mode, sessionId, placement, state.loading, state.templates.length, state.error, t]);
+
+			react.useLayoutEffect(() => {
+				if (!open || placement !== "panel") return;
+				panel.current.querySelector('[data-office-ppt-template-viewport] button[aria-pressed="true"], [data-ppt-category]')?.focus({ preventScroll: true });
+			}, [open, placement]);
+
+			const choose = async template => {
+				if (state.loading) return;
+				if (active && template.id === state.selectedId) { close(); return; }
 				mode.setLoading(sessionId, true);
-				client.call("template/select", {
-					templateId: template.id,
-					mode: activeMode
-				}).then(() => {
-					mode.select(sessionId, template, activeMode);
-				}).catch((reason) => {
+				try {
+					await client.call("template/select", { templateId: template.id, mode: "ppt" });
+					mode.select(sessionId, template, "ppt");
+					close();
+				} catch (reason) {
 					mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason));
-				});
-			};
-			const choose = (template) => {
-				if (template.id === state.selectedId) {
-					deselect();
-					return;
 				}
-				select(template);
 			};
-			const togglePpt = () => {
-				if (state.activeMode === "ppt") {
-					selectPresentationMode(client, mode, sessionId, null);
-					return;
+			const exitPpt = async () => {
+				mode.setLoading(sessionId, true);
+				try {
+					await client.call("presentation/mode", { mode: null });
+					mode.setMode(sessionId, null);
+					mode.setLoading(sessionId, false);
+					close();
+				} catch (reason) {
+					mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason));
 				}
-				const selected = state.templates.find((template) => template.id === state.selectedId && templateSupportsMode(template, "ppt"));
-				if (selected === void 0) {
-					if (state.selectedId !== null) {
-						deselectTemplate(client, mode, sessionId, "ppt");
-						return;
-					}
-					selectPresentationMode(client, mode, sessionId, "ppt");
-					return;
-				}
-				select(selected, "ppt");
 			};
-			const modeTemplates = state.templates.filter((template) => templateSupportsMode(template, "ppt"));
-			const templateCategories = ["all", ...new Set(modeTemplates.map(templateCategory))];
-			const visibleTemplates = modeTemplates.filter((template) => category === "all" || templateCategory(template) === category);
-			(0, react.useEffect)(() => {
-				if (!templateCategories.includes(category)) setCategory("all");
-			}, [category, templateCategories]);
-			(0, react.useLayoutEffect)(() => {
-				if (placement === "trigger" || placement === "inline") return;
-				const root = modeRootRef.current;
-				const panel = templatePanelRef.current;
-				if (state.activeMode === null || root === null || panel === null) return;
-				const scrollBody = root.closest("[data-conversation-scroll]");
-				const composerCard = root.closest("[data-composer-seat]")?.querySelector("[data-composer-card]") ?? null;
-				if (scrollBody === null || composerCard === null) return;
-				const syncGeometry = () => {
-					const scrollRect = scrollBody.getBoundingClientRect();
-					const panelRect = panel.getBoundingClientRect();
-					const availableHeight = Math.max(TEMPLATE_PANEL_MIN_HEIGHT_PX, Math.floor(scrollRect.bottom - panelRect.top - TEMPLATE_DOCK_BOTTOM_PX));
-					root.style.setProperty("--office-ppt-template-panel-height", `${availableHeight}px`);
-				};
-				const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(syncGeometry) : null;
-				resizeObserver?.observe(scrollBody);
-				resizeObserver?.observe(composerCard);
-				window.addEventListener("resize", syncGeometry);
-				const frame = window.requestAnimationFrame(syncGeometry);
-				return () => {
-					window.cancelAnimationFrame(frame);
-					resizeObserver?.disconnect();
-					window.removeEventListener("resize", syncGeometry);
-					root.style.removeProperty("--office-ppt-template-panel-height");
-				};
-			}, [placement, state.activeMode]);
-			if (placement === "trigger") return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-				type: "button",
-				className: OfficePptHero_module_css_default.modeChip,
-				"data-selected": state.activeMode === "ppt" || void 0,
-				"aria-expanded": state.activeMode === "ppt",
-				"aria-pressed": state.activeMode === "ppt",
-				"data-desktop-ppt": "",
-				onClick: togglePpt,
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(DesktopPptIcon, {}), t("mode.label")]
-			});
-			if ((placement === "fixed" || placement === "inline") && state.activeMode === null) return null;
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
-				ref: modeRootRef,
-				className: OfficePptHero_module_css_default.modeRoot,
-				"data-placement": placement,
-				"aria-label": t("mode.region"),
-				children: [placement === "overlay" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-					className: OfficePptHero_module_css_default.modeRow,
-					children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-						type: "button",
-						className: OfficePptHero_module_css_default.modeChip,
-						"data-selected": state.activeMode === "ppt" || void 0,
-						"aria-expanded": state.activeMode === "ppt",
-						"aria-pressed": state.activeMode === "ppt",
-						"data-desktop-ppt": "",
-						onClick: togglePpt,
-						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(DesktopPptIcon, {}), t("mode.label")]
-					})
-				}), state.activeMode !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-					ref: templatePanelRef,
-					className: OfficePptHero_module_css_default.templatePanel,
-					"data-office-ppt-template-panel": "",
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-						className: OfficePptHero_module_css_default.templateToolbar,
-						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-							className: OfficePptHero_module_css_default.categoryTabs,
-							role: "tablist",
-							"aria-label": t("templates.categories"),
-							children: templateCategories.map((item) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-								type: "button",
-								role: "tab",
-								"aria-selected": category === item,
-								"data-selected": category === item || void 0,
-								onClick: () => {
-									setCategory(item);
-								},
-								children: t(`templates.category.${item}`)
-							}, item))
-						})
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-						ref: templateViewportRef,
-						className: OfficePptHero_module_css_default.templateViewport,
-						"data-office-ppt-template-viewport": "",
-						"data-native-wheel-owner": "",
-						children: [state.error !== "" && state.templates.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-							className: OfficePptHero_module_css_default.templateError,
-							role: "alert",
-							children: state.error
-						}), state.loading && state.templates.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-							className: OfficePptHero_module_css_default.panelState,
-							children: t("status.loading")
-						}) : state.error !== "" && state.templates.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-							className: OfficePptHero_module_css_default.panelState,
-							role: "alert",
-							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: state.error }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-								type: "button",
-								className: OfficePptHero_module_css_default.retryButton,
-								onClick: () => {
-									mode.setError(sessionId, "");
-								},
-								children: t("templates.retry")
-							})]
-						}) : visibleTemplates.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-							className: OfficePptHero_module_css_default.panelState,
-							children: t("templates.empty")
-						}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-							className: OfficePptHero_module_css_default.templateGrid,
-							children: visibleTemplates.map((template) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(TemplateCard, {
-								template,
-								selected: template.id === state.selectedId,
-								choose
-							}, template.id))
-						})]
-					})]
-				})]
-			});
+			const templates = state.templates.filter(template => templateSupportsMode(template, "ppt"));
+			const categories = ["all", ...new Set(templates.map(templateCategory))];
+			const visible = templates.filter(template => category === "all" || templateCategory(template) === category);
+			const h = react.createElement;
+			if (placement === "trigger") return h("span", { className: "dsh-ppt-control" },
+				h("button", {
+					id: triggerId, type: "button", className: "dsh-ppt-trigger", title: label, "aria-label": label,
+					"data-desktop-ppt": "", "data-selected": active || undefined,
+					"aria-expanded": open, "aria-pressed": active,
+					"aria-controls": open ? panelId : undefined,
+					onClick: () => setOpen(!open)
+				}, h(DesktopPptIcon), h("span", { className: "dsh-ppt-trigger-mode" }, t("mode.label") + (active && selected ? " ·" : "")),
+					active && selected && h("span", { className: "dsh-ppt-trigger-label" }, selected.name),
+					h("span", { className: "dsh-ppt-chevron", "aria-hidden": true }, "⌄")));
+			if (!open) return null;
+			return h("section", {
+					ref: panel, id: panelId, "aria-label": t("templates.title"),
+					className: "dsh-ppt-panel", "data-office-ppt-template-panel": "", "data-placement": "bottom",
+					onKeyDown: event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }
+				},
+					h("div", { className: "dsh-ppt-panel-header" },
+						h("h2", { className: "dsh-ppt-panel-title" }, t("templates.title")),
+						h("div", { className: "dsh-ppt-panel-actions" },
+							active && h("button", { type: "button", className: "dsh-ppt-exit", disabled: state.loading, onClick: exitPpt }, t("mode.exit")),
+							h("button", { type: "button", className: "dsh-ppt-close", "aria-label": t("templates.close"), onClick: close }, "×"))),
+					state.notice && active && h("p", { className: "dsh-ppt-panel-notice", role: "status" }, t("templates.migrated")),
+					h("div", { className: OfficePptHero_module_css_default.categoryTabs, role: "group", "aria-label": t("templates.categories") },
+						categories.map(item => h("button", {
+							key: item, type: "button", "data-ppt-category": item, "aria-pressed": category === item,
+							"data-selected": category === item || undefined, onClick: () => setCategory(item)
+						}, t(`templates.category.${item}`)))),
+					h("div", { className: OfficePptHero_module_css_default.templateViewport, "data-office-ppt-template-viewport": "", "data-native-wheel-owner": "", "aria-busy": state.loading },
+						state.error && h("div", { className: OfficePptHero_module_css_default.templateError, role: "alert" }, state.error,
+							state.templates.length === 0 && h("button", { type: "button", className: OfficePptHero_module_css_default.retryButton, onClick: () => mode.setError(sessionId, "") }, t("templates.retry"))),
+						state.loading && templates.length === 0 ? h("div", { className: OfficePptHero_module_css_default.panelState }, t("status.loading")) :
+						h("div", { className: OfficePptHero_module_css_default.templateGrid }, visible.map(template => h(TemplateCard, {
+							key: template.id, template, selected: active && template.id === state.selectedId, choose, disabled: state.loading
+						})))));
 		}
-		/** Use the public input dock; no Desktop-only slots or host patches are required. */
 		function OfficePptComposer(props) {
-			if (!props.session.blank) return null;
-			return (0, react_jsx_runtime.jsxs)("div", {
-				className: "dsh-ppt-composer",
-				children: [
-					(0, react_jsx_runtime.jsxs)("div", {
-						className: "dsh-ppt-controls",
-						children: [
-							(0, react_jsx_runtime.jsx)(OfficePptStandardModeAction, props),
-							(0, react_jsx_runtime.jsx)(OfficePptInputAccessory, props)
-						]
-					}),
-					(0, react_jsx_runtime.jsx)(OfficePptChooser, { ...props, placement: "inline", loadTemplates: false })
-				]
-			});
+			const blank = props.useSession(session => session.blank);
+			if (!blank) return null;
+			return react_jsx_runtime.jsx(OfficePptChooser, { ...props }, props.sessionId);
 		}
-		/** PPT mode control beside the blank-session agent preset. */
-		function OfficePptStandardModeAction(props) {
-            const state = useMode(props.mode, props.sessionId);
-            return (0, react_jsx_runtime.jsxs)(react.Fragment, { children: [
-                (0, react_jsx_runtime.jsx)(OfficePptChooser, { ...props, placement: "trigger" }),
-                state.notice && state.activeMode !== null ? (0, react_jsx_runtime.jsx)("span", {
-                    role: "status", "data-ppt-template-migration": "",
-                    style: { fontSize: 11, color: "var(--dsw-alias-label-secondary)", maxWidth: 300 },
-                    children: props.t("templates.migrated")
-                }) : null
-            ] });
-        }
 		//#endregion
 		//#region ../office-ppt/src/client/locales.ts
 		/** Office PPT composer-mode dictionaries. */
@@ -719,6 +526,8 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 		const zh = {
 			"mode.label": "PPT",
 			"mode.region": "演示文稿模式",
+			"mode.exit": "退出 PPT 模式",
+			"templates.close": "收起模板选择",
 			"composer.selectedTemplate": "已选模板",
 			"composer.removeTemplate": "取消选择模板",
 			"templates.title": "选择模板",
@@ -783,6 +592,8 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 		const en = {
 			"mode.label": "PPT",
 			"mode.region": "Presentation modes",
+			"mode.exit": "Exit PPT mode",
+			"templates.close": "Close template picker",
 			"composer.selectedTemplate": "Selected template",
 			"composer.removeTemplate": "Remove selected template",
 			"templates.title": "Select template",
@@ -887,24 +698,24 @@ button[data-desktop-ppt]:focus-visible{outline:2px solid var(--dsw-alias-label-p
 			});
 		}
 		/**
-		* Register the PPT chooser on the cross-version standard Composer seats.
+		* Register the compact PPT picker in the public composer toolbar.
 		* @param ctx - Browser context that owns the standard Composer slots.
 		*/
 		function applyStandard(ctx) {
 			const injectHero = officePptHeroInjection(ctx);
-			ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
-				name: "conversation.input.dock",
-				id: "dsh-ppt",
-				order: 20,
-				locale: NS,
-				inject: injectHero
-			}, OfficePptComposer));
+			// The standard composer is a flex column. Ordering only our dock last keeps
+			// the picker below the input in normal flow, including blank sessions.
+			for (const [name, placement] of [["conversation.input.left", "trigger"], ["conversation.input.dock", "panel"]]) {
+				ctx.slots.inject(name, () => ctx.slots.register({
+					name, id: "dsh-ppt", order: 20, locale: NS, inject: injectHero
+				}, props => react_jsx_runtime.jsx(OfficePptComposer, { ...props, placement })));
+			}
 		}
 		//#endregion
 		//#region src/client/index.ts
 		/** Required standard browser services. */
 		const inject = standardInject;
-		/** Mount the selected template in the reference rail and the chooser below the Composer card. */
+		/** Mount the PPT toolbar button and the collapsible picker below the input card. */
 		function apply(ctx) {
 			applyStandard(ctx);
 		}

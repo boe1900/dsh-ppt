@@ -17,7 +17,9 @@
 dsh plugin --profile web add @cola1900/dsh-ppt
 ```
 
-把 `web` 替换为实际 profile，然后重启该 profile。新会话输入框上方启用 **PPT**，选择模板并描述需求。按钮、选中模板缩略图和可滚动模板列表使用官方 `conversation.input.dock` 插槽，无需 Desktop 的输入框补丁。
+把 `web` 替换为实际 profile，然后重启该 profile。新会话中点击输入框底部工具栏的 **PPT**，在输入框下方选择模板，再描述需求。选中后面板收起，按钮以灰黑色选中态显示模板名，不常驻显示模板缩略图。过长的模板名显示省略号，悬停可查看完整名称。再次点击可更换模板或退出 PPT 模式；仅打开、关闭面板不会改变当前模式。
+
+界面使用官方 `conversation.input.left` 和 `conversation.input.dock` 插槽，只设置插件自身样式，不修改原 DSH。模板面板始终在输入框下方，列表内部可滚动；窗口较矮时可滚动页面，不会自动翻到上方。
 
 如果目标 Desktop 已内置 `dsh-ppt-composer`，先在目标 profile 的插件配置中停用原 PPT bundle，再加载本包。不要同时启用两套 PPT bundle，否则会重复注册工具、路由和输入框按钮。本包已经合并 composer，无需再安装 `dsh-ppt-composer`。
 

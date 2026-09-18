@@ -125,7 +125,7 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   assert.equal(routes.size, 0, 'Plugin disposal must release HTTP routes');
 });
 
-test('public DSH input dock supports toggling PPT and choosing a template without Desktop patches', async t => {
+test('toolbar picker selects, closes, retries failures, and exits without toggling on browse', async t => {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { pretendToBeVisual: true, url: 'http://localhost' });
   const saved = ['window', 'document', 'IS_REACT_ACT_ENVIRONMENT'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]);
   globalThis.window = dom.window;
@@ -141,22 +141,30 @@ test('public DSH input dock supports toggling PPT and choosing a template withou
     }
   });
   let entry;
-  const source = await readFile(path.join(root, 'lib/client.js'), 'utf8');
   dom.window.__ModuleLoader__ = { load: value => { entry = value; } };
-  vm.runInNewContext(source, { window: dom.window, document: dom.window.document, AbortController });
+  vm.runInNewContext(await readFile(path.join(root, 'lib/client.js'), 'utf8'), {
+    window: dom.window, document: dom.window.document, AbortController, Node: dom.window.Node, performance,
+  });
   assert.equal(entry.id, manifest.name);
   const require = createRequire(import.meta.url);
   const React = require('react');
   const { createRoot } = require('react-dom/client');
-  const client = entry.factory(name => name === '@deepseek-ai/dsh-client-ui-primitives' ? {} : require(name));
+  const client = entry.factory(require);
   const slots = new SlotCore();
-  slots.register({ name: 'root', children: { 'conversation.input.dock': { kind: 'list', scope: 'session' } } }, () => null);
-  let seat, Component, dictionary;
+  slots.register({ name: 'root', children: {
+    'conversation.input.left': { kind: 'list', scope: 'session' },
+    'conversation.input.dock': { kind: 'list', scope: 'session' },
+  } }, () => null);
+  const seats = new Map();
+  let dictionary, failSelect = false, failExit = false, blank = true;
   const state = { templates: definitions, selectedTemplateId: null, presentationMode: null };
   const requests = [];
   const rpc = { async call(channel, endpoint, payload) {
     assert.equal(channel, '/dsh-ppt');
     requests.push({ endpoint, payload });
+    if ((endpoint === 'template/select' && failSelect) || (endpoint === 'presentation/mode' && failExit)) {
+      throw new Error('Connection unavailable');
+    }
     if (endpoint === 'presentation/mode') state.presentationMode = payload.mode;
     if (endpoint === 'template/select') { state.selectedTemplateId = payload.templateId; state.presentationMode = payload.mode; }
     return { ok: true, value: { status: 'ok', data: state } };
@@ -167,32 +175,68 @@ test('public DSH input dock supports toggling PPT and choosing a template withou
     get: () => ({ rpc }),
     slots: { inject: (_name, callback) => callback(), register: (options, component) => {
       slots.register(options, component);
-      seat = options;
-      Component = component;
-    } }
+      seats.set(options.name, { options, component, injected: options.inject('ui-test') });
+    } },
   });
-  assert.equal(seat.name, 'conversation.input.dock');
   const mount = createRoot(dom.window.document.getElementById('root'));
   unmount = () => React.act(async () => mount.unmount());
-  const props = { ...seat.inject('ui-test'), sessionId: 'ui-test', session: { blank: true }, input: {}, t: key => dictionary[key] ?? key };
-  await React.act(async () => mount.render(React.createElement(Component, props)));
-  const button = dom.window.document.querySelector('button[data-desktop-ppt]');
-  assert(button, 'PPT button must appear in an unpatched public slot');
+  const render = () => mount.render(React.createElement('div', { style: { display: 'flex', flexDirection: 'column' } },
+    ...[...seats].map(([name, seat]) => React.createElement(seat.component, {
+      key: name, ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank }),
+      t: key => dictionary[key] ?? key,
+    }))));
+  await React.act(async () => render());
+  const doc = dom.window.document;
+  const button = doc.querySelector('button[data-desktop-ppt]');
+  const panel = () => doc.querySelector('[data-office-ppt-template-panel]');
+  const choice = () => [...doc.querySelectorAll('button[aria-label]')].find(node => node.getAttribute('aria-label') === definitions[0].name);
+  assert(button, 'Toolbar needs no owner props beyond the standard session hook');
+  assert.equal(requests.filter(request => request.endpoint === 'state').length, 1);
   assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.equal(panel(), null);
   await React.act(async () => button.click());
-  assert.equal(state.presentationMode, 'ppt');
-  assert(dom.window.document.querySelector('[data-office-ppt-template-panel]'));
-  const choice = [...dom.window.document.querySelectorAll('button[aria-label]')].find(node => node.getAttribute('aria-label') === definitions[0].name);
-  assert(choice, 'The built catalog must be selectable');
-  await React.act(async () => choice.click());
-  assert.equal(state.selectedTemplateId, definitions[0].id);
-  assert(requests.some(request => request.endpoint === 'template/select' && request.payload.sessionId === 'ui-test'));
-  assert(dom.window.document.querySelector('img[src^="/dsh-ppt/previews/"]'));
-  await React.act(async () => button.click());
+  assert(panel());
+  assert.equal(state.presentationMode, null, 'Browsing must not enable PPT mode');
+  assert.equal(panel().dataset.placement, 'bottom');
+  failSelect = true;
+  await React.act(async () => choice().click());
+  assert.match(doc.querySelector('[role="alert"]').textContent, /Connection unavailable/);
   assert.equal(state.presentationMode, null);
-  assert.equal(dom.window.document.querySelector('[data-office-ppt-template-panel]'), null);
-  await React.act(async () => mount.render(React.createElement(Component, { ...props, session: { blank: false } })));
-  assert.equal(dom.window.document.querySelector('button[data-desktop-ppt]'), null);
+  assert(panel(), 'Failed selections keep the picker open');
+  failSelect = false;
+  await React.act(async () => choice().click());
+  assert.equal(state.selectedTemplateId, definitions[0].id);
+  assert.equal(state.presentationMode, 'ppt');
+  assert.equal(panel(), null);
+  assert.equal(doc.querySelector('img'), null, 'No persistent thumbnail remains');
+  assert(button.textContent.includes(definitions[0].name));
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+  assert.equal(doc.activeElement, button);
+  assert(requests.some(request => request.endpoint === 'template/select' && request.payload.sessionId === 'ui-test'));
+  await React.act(async () => button.click());
+  assert.equal(choice().getAttribute('aria-pressed'), 'true');
+  assert(doc.querySelector('.dsh-ppt-selected'));
+  await React.act(async () => panel().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  assert.equal(panel(), null);
+  assert.equal(state.presentationMode, 'ppt', 'Escape only closes the picker');
+  await React.act(async () => button.click());
+  const before = requests.length;
+  await React.act(async () => choice().click());
+  assert.equal(requests.length, before, 'Re-selecting the active template just closes the picker');
+  assert.equal(state.presentationMode, 'ppt');
+  await React.act(async () => button.click());
+  failExit = true;
+  await React.act(async () => doc.querySelector('.dsh-ppt-exit').click());
+  assert.equal(state.presentationMode, 'ppt', 'A failed exit must retain the active mode');
+  assert(panel());
+  failExit = false;
+  await React.act(async () => doc.querySelector('.dsh-ppt-exit').click());
+  assert.equal(state.presentationMode, null);
+  assert.equal(panel(), null);
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  blank = false;
+  await React.act(async () => render());
+  assert.equal(doc.querySelector('button[data-desktop-ppt]'), null);
 });
 
 test('packaged previews are served locally and unknown paths stay inaccessible', async t => {
