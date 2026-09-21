@@ -13,6 +13,9 @@ import { unzipSync } from 'fflate';
 import { JSDOM } from 'jsdom';
 import yaml from 'js-yaml';
 import { Context } from '@deepseek-ai/cordis';
+import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent';
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { Session } from '@deepseek-ai/dsh-session';
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots';
 import { SkillRegistry } from '@deepseek-ai/dsh-skill';
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt';
@@ -82,12 +85,40 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   const sessionId = randomUUID();
   assert.equal((await rpc('state', { sessionId })).value.data.templates.length, 16);
   assert.equal((await rpc('template/select', { sessionId, templateId: 'dsh-blue-professional', mode: 'ppt' })).value.status, 'ok');
-  const active = await ctx.systemPrompt.assemble({ agent: { id: sessionId, session: { header: { agentPreset: 'standard' }, events: [{ type: 'agent-preset/selected', data: { agentPreset: 'ppt' } }] } } });
-  const inactive = await ctx.systemPrompt.assemble({ agent: { id: randomUUID(), session: { header: { agentPreset: 'standard' }, events: [] } } });
+  const createAgent = (id, preset) => ({ id, session: Session.create(id, undefined, {
+    version: 3, id, createdAt: Date.now(), cwd: workspace, isSeeded: false,
+    ...(preset === undefined ? {} : { agentPreset: preset }),
+  }) });
+  const agent = createAgent(sessionId, 'standard');
+  agent.session.append('agent-preset/selected', { agentPreset: 'ppt' });
+  const input = createUserMessage({ content: [{ type: 'text', text: '用这个模板制作两页 PPT' }], source: { kind: 'user' } });
+  const preStep = (current, step = 1) => agentEvents(ctx, current).waterfall('agent/pre-step', {
+    messages: [input], turn: 1, step, signal: new AbortController().signal,
+  }, async () => ({ kind: 'enter', messages: [input] }));
+  const decision = await preStep(agent);
+  assert.deepEqual(decision.messages.slice(1).map(message => message.source.plugin), ['dsh-ppt-skill', 'dsh-ppt-composer']);
+  assert.match(decision.messages[1].content[0].text, /DSH-PPT-AUTHORING-20260907-V3/);
+  assert.match(decision.messages[2].content[0].text, /selected_template_id: dsh-blue-professional/);
+  for (const message of decision.messages) agent.session.append('user/message', message, { surfaceOp: 'append' });
+  assert.equal((await preStep(agent, 2)).messages.length, 1, 'Tool steps must not duplicate context');
+  assert.deepEqual((await preStep(agent)).messages.slice(1).map(message => message.source.plugin), ['dsh-ppt-composer'], 'Later turns retain the existing skill');
+  const restored = { id: agent.id, session: Session.create(agent.id, agent.session.snapshotEvents(), agent.session.header) };
+  assert.match((await preStep(restored)).messages.at(-1).content[0].text, /selected_template_id: dsh-blue-professional/);
+  const standard = createAgent(randomUUID(), 'ppt');
+  standard.session.append('agent-preset/selected', { agentPreset: 'standard' });
+  await rpc('template/select', { sessionId: standard.id, templateId: 'dsh-broadside', mode: 'ppt' });
+  await rpc('presentation/mode', { sessionId: standard.id, mode: 'ppt' });
+  assert.equal((await preStep(standard)).messages.length, 1, 'The latest standard preset must override old PPT state');
+  assert.equal((await preStep(createAgent(randomUUID(), 'ppt'))).messages.length, 3, 'A session created as PPT must inject without a selection event');
+  const legacy = createAgent(randomUUID());
+  await rpc('presentation/mode', { sessionId: legacy.id, mode: 'ppt' });
+  assert.equal((await preStep(legacy)).messages.length, 3, 'Legacy PPT sessions keep their context');
+  const active = await ctx.systemPrompt.assemble(assembleContextFor(agent));
+  const inactive = await ctx.systemPrompt.assemble(assembleContextFor(standard));
   assert(active.sections.some(section => section.name === 'tool:dsh-ppt'));
   assert(!inactive.sections.some(section => section.name === 'tool:dsh-ppt'));
   assert.equal((await rpc('presentation/mode', { sessionId, mode: null })).value.status, 'ok');
-  assert((await ctx.systemPrompt.assemble({ agent: { id: sessionId, session: { header: { agentPreset: 'standard' }, events: [{ type: 'agent-preset/selected', data: { agentPreset: 'ppt' } }] } } })).sections.some(section => section.name === 'tool:dsh-ppt'));
+  assert((await ctx.systemPrompt.assemble(assembleContextFor(agent))).sections.some(section => section.name === 'tool:dsh-ppt'));
 
   const execution = { agent: { id: sessionId, session: { header: { cwd: workspace } } }, signal: new AbortController().signal };
   const run = (name, args) => tools.get(name).execute(args, execution);
