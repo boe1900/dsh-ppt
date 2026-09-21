@@ -1,7 +1,7 @@
 {
   "name": "@cola1900/dsh-ppt",
   "description": "Standalone DSH plugin for PPT authoring, template selection, validation and editable PPTX export",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/boe1900/dsh-ppt.git"
