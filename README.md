@@ -3,7 +3,7 @@
 从 [dataelement/dsh-desktop](https://github.com/dataelement/dsh-desktop) 提取的独立 **DSH / DeepSeek Harness 插件**。一个包包含 PPT 按钮、模板选择、PPTD 编写与校验、预览和可编辑 PPTX 导出，无需 Electron 或原 Desktop 仓库。
 
 - 16 套模板、192 个版式，保留英文/中文 PPTD 示例和本地预览图。
-- 仅在会话启用 PPT 模式时自动注入创作指引。
+- 提供原生 DSH **PPT 预设**；只有选择该预设时才注入 PPT 创作指引。
 - 保留原有文件授权、路径限制、写入哈希检查、版本记录和导出校验。
 - 提供 `dsh-pptd` 命令行和 `@cola1900/dsh-ppt/pptd` JavaScript API。
 
@@ -17,9 +17,9 @@
 dsh plugin --profile web add @cola1900/dsh-ppt
 ```
 
-把 `web` 替换为实际 profile，然后重启该 profile。新会话中点击输入框底部工具栏的 **PPT**，在输入框下方选择模板，再描述需求。选中后面板收起，按钮以灰黑色选中态显示模板名，不常驻显示模板缩略图。过长的模板名显示省略号，悬停可查看完整名称。再次点击可更换模板或退出 PPT 模式；仅打开、关闭面板不会改变当前模式。
+把 `web` 替换为实际 profile，然后重启该 profile。新会话顶部的原生预设选择器会出现 **PPT**；选择后，输入框下方显示模板面板，在首次发送前选择模板，再描述需求。首次发送后预设和模板固定，新会话可以重新选择。插件首次启动会把内置 preset 写入 `$DSH_HOME/.agent-presets/ppt`，无需手动复制或配置。
 
-界面使用官方 `conversation.input.left` 和 `conversation.input.dock` 插槽，只设置插件自身样式，不修改原 DSH。模板面板始终在输入框下方，列表内部可滚动；窗口较矮时可滚动页面，不会自动翻到上方。
+界面只使用官方 `conversation.input.dock` 插槽，只设置插件自身样式，不修改原 DSH。模板名称继续在卡片内显示省略号，输入框底部不再显示 `PPT · 模板名` 控件。
 
 如果目标 Desktop 已内置 `dsh-ppt-composer`，先在目标 profile 的插件配置中停用原 PPT bundle，再加载本包。不要同时启用两套 PPT bundle，否则会重复注册工具、路由和输入框按钮。本包已经合并 composer，无需再安装 `dsh-ppt-composer`。
 
@@ -40,7 +40,7 @@ dsh-pptd render /path/to/deck -o /path/to/output.pptx --json
 
 ## 开发
 
-`lib/` 是上游维护的 JavaScript 运行时代码；`src/client.js` 是输入框客户端的构建输入。完整原始 TypeScript 源码不在上游提取基线中，本项目没有把声明文件冒充实现源码。
+`lib/` 是上游维护的 JavaScript 运行时代码；`src/client.js` 是输入框客户端的构建输入。`presets/ppt/` 是随插件安装的原生 Agent Preset 定义，首次启动会同步到 DSH 的用户 preset 根目录。完整原始 TypeScript 源码不在上游提取基线中，本项目没有把声明文件冒充实现源码。
 
 `skills/dsh-ppt/references/` 保存模板元数据、设计说明、双语源文件和预览。修改元数据或预览后执行 `npm run build`，生成模板目录、预览白名单和客户端预览映射。构建使用已随包保存的预览，不依赖网络或原桌面工程。修改版式后可用 `dsh-pptd screenshot` 重新生成图片，再更新对应的 JPG 预览。
 

@@ -6,3 +6,4 @@
       name: '@cola1900/dsh-ppt'
       config:
         root: !!js dshHomePath('kimi-ppt')
+        presetRoot: !!js dshHomePath('.agent-presets')

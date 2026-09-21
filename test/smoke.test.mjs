@@ -72,6 +72,8 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   const runtime = ctx.plugin(plugin, { root: path.join(scratch, 'storage') });
   t.after(async () => { await runtime.dispose(); await skills.dispose(); await prompt.dispose(); });
   await runtime;
+  assert.match(await readFile(path.join(scratch, '.agent-presets/ppt/agent.cordis.yml'), 'utf8'), /dsh-ppt\/preset/);
+  assert.match(await readFile(path.join(scratch, '.agent-presets/ppt/preset.yml'), 'utf8'), /name: PPT/);
   assert(tools.has('pptd_render'));
   assert(routes.has('/dsh-ppt/previews'));
   assert(routes.has('/dsh-ppt'));
@@ -80,12 +82,12 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   const sessionId = randomUUID();
   assert.equal((await rpc('state', { sessionId })).value.data.templates.length, 16);
   assert.equal((await rpc('template/select', { sessionId, templateId: 'dsh-blue-professional', mode: 'ppt' })).value.status, 'ok');
-  const active = await ctx.systemPrompt.assemble({ agent: { id: sessionId } });
-  const inactive = await ctx.systemPrompt.assemble({ agent: { id: randomUUID() } });
+  const active = await ctx.systemPrompt.assemble({ agent: { id: sessionId, session: { header: { agentPreset: 'standard' }, events: [{ type: 'agent-preset/selected', data: { agentPreset: 'ppt' } }] } } });
+  const inactive = await ctx.systemPrompt.assemble({ agent: { id: randomUUID(), session: { header: { agentPreset: 'standard' }, events: [] } } });
   assert(active.sections.some(section => section.name === 'tool:dsh-ppt'));
   assert(!inactive.sections.some(section => section.name === 'tool:dsh-ppt'));
   assert.equal((await rpc('presentation/mode', { sessionId, mode: null })).value.status, 'ok');
-  assert(!(await ctx.systemPrompt.assemble({ agent: { id: sessionId } })).sections.some(section => section.name === 'tool:dsh-ppt'));
+  assert((await ctx.systemPrompt.assemble({ agent: { id: sessionId, session: { header: { agentPreset: 'standard' }, events: [{ type: 'agent-preset/selected', data: { agentPreset: 'ppt' } }] } } })).sections.some(section => section.name === 'tool:dsh-ppt'));
 
   const execution = { agent: { id: sessionId, session: { header: { cwd: workspace } } }, signal: new AbortController().signal };
   const run = (name, args) => tools.get(name).execute(args, execution);
@@ -125,7 +127,7 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   assert.equal(routes.size, 0, 'Plugin disposal must release HTTP routes');
 });
 
-test('toolbar picker selects, closes, retries failures, and exits without toggling on browse', async t => {
+test('native PPT preset shows a one-time template picker below the composer', async t => {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { pretendToBeVisual: true, url: 'http://localhost' });
   const saved = ['window', 'document', 'IS_REACT_ACT_ENVIRONMENT'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]);
   globalThis.window = dom.window;
@@ -152,21 +154,19 @@ test('toolbar picker selects, closes, retries failures, and exits without toggli
   const client = entry.factory(require);
   const slots = new SlotCore();
   slots.register({ name: 'root', children: {
-    'conversation.input.left': { kind: 'list', scope: 'session' },
     'conversation.input.dock': { kind: 'list', scope: 'session' },
   } }, () => null);
   const seats = new Map();
-  let dictionary, failSelect = false, failExit = false, blank = true;
+  let dictionary, failSelect = false, blank = true, agentPreset = 'standard';
   const state = { templates: definitions, selectedTemplateId: null, presentationMode: null };
   const requests = [];
   const rpc = { async call(channel, endpoint, payload) {
     assert.equal(channel, '/dsh-ppt');
     requests.push({ endpoint, payload });
-    if ((endpoint === 'template/select' && failSelect) || (endpoint === 'presentation/mode' && failExit)) {
+    if (endpoint === 'template/select' && failSelect) {
       throw new Error('Connection unavailable');
     }
-    if (endpoint === 'presentation/mode') state.presentationMode = payload.mode;
-    if (endpoint === 'template/select') { state.selectedTemplateId = payload.templateId; state.presentationMode = payload.mode; }
+    if (endpoint === 'template/select') state.selectedTemplateId = payload.templateId;
     return { ok: true, value: { status: 'ok', data: state } };
   } };
   client.apply({
@@ -182,61 +182,35 @@ test('toolbar picker selects, closes, retries failures, and exits without toggli
   unmount = () => React.act(async () => mount.unmount());
   const render = () => mount.render(React.createElement('div', { style: { display: 'flex', flexDirection: 'column' } },
     ...[...seats].map(([name, seat]) => React.createElement(seat.component, {
-      key: name, ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank }),
+      key: name, ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank, agentPreset }),
       t: key => dictionary[key] ?? key,
     }))));
   await React.act(async () => render());
   const doc = dom.window.document;
-  const button = doc.querySelector('button[data-desktop-ppt]');
   const panel = () => doc.querySelector('[data-office-ppt-template-panel]');
   const choice = () => [...doc.querySelectorAll('button[aria-label]')].find(node => node.getAttribute('aria-label') === definitions[0].name);
-  assert(button, 'Toolbar needs no owner props beyond the standard session hook');
-  assert.equal(requests.filter(request => request.endpoint === 'state').length, 1);
-  assert.equal(button.getAttribute('aria-pressed'), 'false');
   assert.equal(panel(), null);
-  await React.act(async () => button.click());
+  agentPreset = 'ppt';
+  await React.act(async () => render());
   assert(panel());
-  assert.equal(state.presentationMode, null, 'Browsing must not enable PPT mode');
   assert.equal(panel().dataset.placement, 'bottom');
+  assert.equal(requests.filter(request => request.endpoint === 'state').length, 1);
+  assert.equal(doc.querySelector('button[data-desktop-ppt]'), null, 'The old toolbar trigger is gone');
   failSelect = true;
   await React.act(async () => choice().click());
   assert.match(doc.querySelector('[role="alert"]').textContent, /Connection unavailable/);
-  assert.equal(state.presentationMode, null);
-  assert(panel(), 'Failed selections keep the picker open');
+  assert(panel(), 'Failed selections keep the picker visible');
   failSelect = false;
   await React.act(async () => choice().click());
   assert.equal(state.selectedTemplateId, definitions[0].id);
-  assert.equal(state.presentationMode, 'ppt');
-  assert.equal(panel(), null);
-  assert.equal(doc.querySelector('img'), null, 'No persistent thumbnail remains');
-  assert(button.textContent.includes(definitions[0].name));
-  assert.equal(button.getAttribute('aria-pressed'), 'true');
-  assert.equal(doc.activeElement, button);
-  assert(requests.some(request => request.endpoint === 'template/select' && request.payload.sessionId === 'ui-test'));
-  await React.act(async () => button.click());
+  assert(panel(), 'The selected template remains visible before the first message');
   assert.equal(choice().getAttribute('aria-pressed'), 'true');
   assert(doc.querySelector('.dsh-ppt-selected'));
-  await React.act(async () => panel().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-  assert.equal(panel(), null);
-  assert.equal(state.presentationMode, 'ppt', 'Escape only closes the picker');
-  await React.act(async () => button.click());
-  const before = requests.length;
-  await React.act(async () => choice().click());
-  assert.equal(requests.length, before, 'Re-selecting the active template just closes the picker');
-  assert.equal(state.presentationMode, 'ppt');
-  await React.act(async () => button.click());
-  failExit = true;
-  await React.act(async () => doc.querySelector('.dsh-ppt-exit').click());
-  assert.equal(state.presentationMode, 'ppt', 'A failed exit must retain the active mode');
-  assert(panel());
-  failExit = false;
-  await React.act(async () => doc.querySelector('.dsh-ppt-exit').click());
-  assert.equal(state.presentationMode, null);
-  assert.equal(panel(), null);
-  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert(requests.some(request => request.endpoint === 'template/select' && request.payload.sessionId === 'ui-test'));
+  assert.equal(doc.querySelector('.dsh-ppt-trigger'), null);
   blank = false;
   await React.act(async () => render());
-  assert.equal(doc.querySelector('button[data-desktop-ppt]'), null);
+  assert.equal(panel(), null, 'The picker disappears after the session starts');
 });
 
 test('packaged previews are served locally and unknown paths stay inaccessible', async t => {

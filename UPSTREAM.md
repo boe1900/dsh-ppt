@@ -8,7 +8,7 @@
 - 模板：`packages/ppt-runtime/templates/`
 - 模板许可证与来源资料：`packages/ppt-runtime/upstream/`
 
-独立化改动：合并核心和 composer 为单个 `dsh-ppt` 包；客户端模块标识统一为 `dsh-ppt`；将 Desktop 专有输入框插槽替换为官方 `conversation.input.left` 和 `conversation.input.dock`，按钮放在输入框底部工具栏，模板面板始终在输入框下方展开，选中后收起并在按钮显示模板名；移除常驻的选中缩略图，区分收起面板和退出 PPT 模式；移除指向缺失文件的 `client-standard` 导出，并使用匹配实际客户端的类型声明；将构建改为读取包内模板、生成目录和预览白名单；移除未使用的 TypeScript、Zod 运行依赖；增加独立安装、打包说明及运行验证。
+独立化改动：合并核心和 composer 为单个 `dsh-ppt` 包；客户端模块标识统一为 `dsh-ppt`；改用 DSH 原生 Agent Preset，随包提供 `presets/ppt/` 并在首次启动时同步到用户 preset 根目录；模板面板只在 PPT 预设的空白会话中通过官方 `conversation.input.dock` 插槽显示，首次发送后固定预设和模板；移除输入框底部 `PPT · 模板名` 控件；移除常驻的选中缩略图；移除指向缺失文件的 `client-standard` 导出，并使用匹配实际客户端的类型声明；将构建改为读取包内模板、生成目录和预览白名单；移除未使用的 TypeScript、Zod 运行依赖；增加独立安装、打包说明及运行验证。
 
 输入框布局只通过插件自身 CSS 和标准会话插槽实现，不修改原 DSH 源码或宿主元素样式。
 

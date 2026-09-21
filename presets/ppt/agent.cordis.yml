@@ -1,0 +1,4 @@
+# The PPT tools and prompt are supplied by the installed dsh-ppt bundle.
+# This tiny entry makes the package's native PPT preset discoverable without
+# mounting a second copy of the bundle's server and tool registrations.
+- name: '@cola1900/dsh-ppt/preset'

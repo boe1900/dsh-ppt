@@ -1,7 +1,7 @@
 {
   "name": "@cola1900/dsh-ppt",
   "description": "Standalone DSH plugin for PPT authoring, template selection, validation and editable PPTX export",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/boe1900/dsh-ppt.git"
@@ -43,7 +43,8 @@
       "default": "./lib/pptd.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./preset": "./lib/preset.js"
   },
   "dsh": {
     "bundle": {
@@ -93,6 +94,7 @@
   "files": [
     "lib",
     "skills",
+    "presets",
     "cordis.patch.yml",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",

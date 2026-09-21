@@ -15,6 +15,8 @@ export interface Config {
     maxDecksPerSession?: number;
     /** Maximum recent activity records retained in session state. */
     maxActivities?: number;
+    /** Absolute DSH agent-preset root used for the bundled PPT preset. */
+    presetRoot?: string;
     /** Absolute DSH PPT Skill override. The package-bundled Skill is the default. */
     pptSkillRoot?: string;
 }

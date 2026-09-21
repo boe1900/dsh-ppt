@@ -7,7 +7,7 @@ description: DSH 演示文稿：编写本地 PPTD 工程并输出可编辑 PPTX�
 
 <!-- DSH-PPT-AUTHORING-20260907-V3 -->
 
-本 Skill 仅由用户选中的 PPT 模式启用。
+本 Skill 仅由用户选中的 PPT 预设启用；预设一旦开始对话便保持不变。
 
 ## 工作过程
 
