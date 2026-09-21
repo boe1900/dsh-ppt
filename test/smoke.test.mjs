@@ -182,7 +182,8 @@ test('native PPT preset shows a one-time template picker below the composer', as
   unmount = () => React.act(async () => mount.unmount());
   const render = () => mount.render(React.createElement('div', { style: { display: 'flex', flexDirection: 'column' } },
     ...[...seats].map(([name, seat]) => React.createElement(seat.component, {
-      key: name, ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank, agentPreset }),
+      key: name, ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank }),
+      useSessions: select => select({ byId: { 'ui-test': { projectionValues: { agentPreset } } } }),
       t: key => dictionary[key] ?? key,
     }))));
   await React.act(async () => render());
@@ -208,6 +209,12 @@ test('native PPT preset shows a one-time template picker below the composer', as
   assert(doc.querySelector('.dsh-ppt-selected'));
   assert(requests.some(request => request.endpoint === 'template/select' && request.payload.sessionId === 'ui-test'));
   assert.equal(doc.querySelector('.dsh-ppt-trigger'), null);
+  agentPreset = 'standard';
+  await React.act(async () => render());
+  assert.equal(panel(), null, 'Switching the native preset hides the picker');
+  agentPreset = 'ppt';
+  await React.act(async () => render());
+  assert(panel());
   blank = false;
   await React.act(async () => render());
   assert.equal(panel(), null, 'The picker disappears after the session starts');
