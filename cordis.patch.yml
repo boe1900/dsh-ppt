@@ -1,9 +1,7 @@
-# Legacy on-disk directory retained to preserve existing user projects.
-# Installable DSH PPTD bundle. The feature remains outside the
-# shipped Web roster until a profile explicitly adds this package.
+# DSH 0.1.7 host-plane registration. Session tools and the Skill are mounted
+# by presets/ppt.patch.yml through the native agent-preset mechanism.
 - insert:
     - id: dsh-ppt
       name: '@cola1900/dsh-ppt'
       config:
         root: !!js dshHomePath('kimi-ppt')
-        presetRoot: !!js dshHomePath('.agent-presets')

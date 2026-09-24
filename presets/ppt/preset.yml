@@ -1,4 +1,0 @@
-name: PPT
-# 固定 PPT 创作工具和提示词；首次发送前选择一个模板。
-description: 使用 PPT 工作流，并在首次发送前选择模板。
-order: 30

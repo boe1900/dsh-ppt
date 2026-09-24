@@ -24,6 +24,7 @@ import { definitions } from '../lib/catalog.js';
 import { previewFiles } from '../lib/preview-manifest.js';
 import { createPreviewHandler } from '../lib/preview-assets.js';
 import { checkPptdProject, loadPptdProject } from '../lib/pptd.js';
+import * as pptPreset from '../lib/preset.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const references = path.join(root, 'skills/dsh-ppt/references');
@@ -48,6 +49,8 @@ test('all 16 templates include valid bilingual source and matching previews', as
 });
 
 test('Cordis loads the single bundle, scopes PPT mode, and exports an editable deck', async t => {
+  assert(pptPreset.inject.includes('dshPptService'), 'The preset must inject the host PPT service inside DSH preset scopes');
+  assert(pptPreset.inject.includes('dshPptSkillRoot'), 'The preset must inject the host Skill root inside DSH preset scopes');
   const schema = yaml.DEFAULT_SCHEMA.extend(new yaml.Type('tag:yaml.org,2002:js', { kind: 'scalar' }));
   const [{ insert: [entry] }] = yaml.load(await readFile(path.join(root, 'cordis.patch.yml'), 'utf8'), { schema });
   assert.equal(entry.name, manifest.name);
@@ -75,8 +78,9 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   const runtime = ctx.plugin(plugin, { root: path.join(scratch, 'storage') });
   t.after(async () => { await runtime.dispose(); await skills.dispose(); await prompt.dispose(); });
   await runtime;
-  assert.match(await readFile(path.join(scratch, '.agent-presets/ppt/agent.cordis.yml'), 'utf8'), /dsh-ppt\/preset/);
-  assert.match(await readFile(path.join(scratch, '.agent-presets/ppt/preset.yml'), 'utf8'), /name: PPT/);
+  const presetRuntime = ctx.plugin(pptPreset);
+  t.after(async () => presetRuntime.dispose());
+  await presetRuntime;
   assert(tools.has('pptd_render'));
   assert(routes.has('/dsh-ppt/previews'));
   assert(routes.has('/dsh-ppt'));
@@ -86,7 +90,7 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   assert.equal((await rpc('state', { sessionId })).value.data.templates.length, 16);
   assert.equal((await rpc('template/select', { sessionId, templateId: 'dsh-blue-professional', mode: 'ppt' })).value.status, 'ok');
   const createAgent = (id, preset) => ({ id, session: Session.create(id, undefined, {
-    version: 3, id, createdAt: Date.now(), cwd: workspace, isSeeded: false,
+    version: 4, id, createdAt: Date.now(), cwd: workspace, isSeeded: false,
     ...(preset === undefined ? {} : { agentPreset: preset }),
   }) });
   const agent = createAgent(sessionId, 'standard');
