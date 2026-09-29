@@ -3,17 +3,17 @@
 从 [dataelement/dsh-desktop](https://github.com/dataelement/dsh-desktop) 提取的独立 **DSH / DeepSeek Harness 插件**。一个包包含 PPT 按钮、模板选择、PPTD 编写与校验、预览和可编辑 PPTX 导出，无需 Electron 或原 Desktop 仓库。
 
 - 16 套模板、192 个版式，保留英文/中文 PPTD 示例和本地预览图。
-- 提供 DSH `0.1.7` 系列原生 **PPT 预设**；PPT 工具、Skill 和基础工作工具都随 preset 挂载。
+- 提供 DSH `0.1.7` / `0.2.0` 系列原生 **PPT 预设**；PPT 工具、Skill 和基础工作工具都随 preset 挂载。
 - 保留原有文件授权、路径限制、写入哈希检查、版本记录和导出校验。
 - 提供 `dsh-pptd` 命令行和 `@cola1900/dsh-ppt/pptd` JavaScript API。
 
 ## 安装
 
-需要 Node.js `^22.19.0 || >=24.0.0`，以及 DSH Web / Desktop。DSH peer 依赖声明为 `^0.1.7-rc.1`，即 `>=0.1.7-rc.1 <0.2.0-0`，允许 RC2、后续 `0.1.7` RC / 正式版和 `0.1.x` 补丁升级，不再精确锁定 RC1。DSH RC2 的兼容性检查会将预发布版本纳入范围；版本范围表示允许加载，不保证未来版本的接口始终不变。
+需要 Node.js `^22.19.0 || >=24.0.0`，以及 DSH Web / Desktop。DSH peer 依赖声明为 `^0.1.7-rc.1 || ^0.2.0-rc.1`，允许 `0.1.7` 系列和 `0.2.0-rc.1` 系列；版本范围表示允许加载，不保证未来版本的接口始终不变。
 
 此版本只支持新版 Agent Preset 架构，不兼容旧版 `.agent-presets` 目录加载方式。
 
-验证基线：RC1 下通过插件测试；RC2 下通过打包安装、PPT 预设加载、模板上下文注入、PPTX 导出及会话保存/恢复测试（使用固定模型响应）。
+验证基线：`0.1.7-rc.1` / `0.1.7-rc.2` 下通过插件测试；`0.2.0-rc.1` 下通过打包安装、PPT 预设加载、模板上下文注入、PPTX 导出及会话保存/恢复测试（使用固定模型响应）。
 
 从 [公共 npm 包](https://www.npmjs.com/package/@cola1900/dsh-ppt) 直接安装到目标 DSH profile：
 
@@ -44,7 +44,7 @@ dsh-pptd render /path/to/deck -o /path/to/output.pptx --json
 
 ## 开发
 
-`lib/` 是上游维护的 JavaScript 运行时代码；`src/client.js` 是输入框客户端的构建输入。`presets/ppt.patch.yml` 是 DSH `0.1.7` 系列的原生 Agent Preset 声明，安装 bundle 后由 profile 直接加载。完整原始 TypeScript 源码不在上游提取基线中，本项目没有把声明文件冒充实现源码。
+`lib/` 是上游维护的 JavaScript 运行时代码；`src/client.js` 是输入框客户端的构建输入。`presets/ppt.patch.yml` 是 DSH `0.1.7` / `0.2.0` 系列的原生 Agent Preset 声明，安装 bundle 后由 profile 直接加载。完整原始 TypeScript 源码不在上游提取基线中，本项目没有把声明文件冒充实现源码。
 
 `skills/dsh-ppt/references/` 保存模板元数据、设计说明、双语源文件和预览。修改元数据或预览后执行 `npm run build`，生成模板目录、预览白名单和客户端预览映射。构建使用已随包保存的预览，不依赖网络或原桌面工程。修改版式后可用 `dsh-pptd screenshot` 重新生成图片，再更新对应的 JPG 预览。
 

@@ -1,4 +1,4 @@
-# DSH 0.1.7 agent preset. The host bundle owns HTTP and persistent PPT state;
+# DSH 0.1.7 / 0.2.0 agent preset. The host bundle owns HTTP and persistent PPT state;
 # this composition owns the model-facing tools, prompt, and bundled Skill.
 - insert:
     - id: preset-ppt
