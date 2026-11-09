@@ -67,6 +67,8 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   let rpc;
   ctx.provide('connection', { rpc: { handle: (_channel, handler) => { rpc = handler; } } });
   ctx.provide('tools', { register: tool => tools.set(tool.name, tool) });
+  ctx.provide('workingDirectory', { ensure: async () => workspace });
+  ctx.provide('sandboxPolicy', { resolve: () => ({ mode: 'workspace-write', workspaceRoot: workspace }) });
   ctx.provide('webServer', { register: route => {
     routes.set(route.path, route);
     return () => routes.delete(route.path);
@@ -102,7 +104,7 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   const decision = await preStep(agent);
   assert.deepEqual(decision.messages.slice(1).map(message => message.source.kind), ['skill-invocation', 'dsh-ppt-composer']);
   for (const message of decision.messages.slice(1)) assert.notEqual(message.source.kind, 'plugin');
-  assert.match(decision.messages[1].content[0].text, /DSH-PPT-AUTHORING-20260907-V3/);
+  assert.match(decision.messages[1].content[0].text, /DSH-PPT-AUTHORING-20260910-V4/);
   assert.match(decision.messages[2].content[0].text, /selected_template_id: dsh-blue-professional/);
   for (const message of decision.messages) agent.session.append('user/message', message, { surfaceOp: 'append' });
   assert.equal((await preStep(agent, 2)).messages.length, 1, 'Tool steps must not duplicate context');

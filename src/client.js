@@ -107,7 +107,7 @@ window.__ModuleLoader__.load({
             notice: false,
 			error: ""
 		};
-		/** Session-keyed presentation state shared by the toolbar button and template panel. */
+		/** Session-keyed presentation state shared by the chooser and personal template manager. */
 		var OfficePptHeroStore = class {
 			constructor() {
 				this.states = /* @__PURE__ */ new Map();
@@ -161,6 +161,17 @@ window.__ModuleLoader__.load({
 					error: ""
 				}));
 			}
+			setTemplateState(sessionId, next) {
+				this.update(sessionId, current => ({
+					...current,
+					templates: next.templates,
+					selectedId: next.templates.some(template => template.id === next.selectedTemplateId) ? next.selectedTemplateId : null,
+					activeMode: next.presentationMode ?? current.activeMode,
+					notice: next.templateMigration?.reason ?? null,
+					loading: false,
+					error: ""
+				}));
+			}
 			select(sessionId, template, activeMode) {
 				this.update(sessionId, (current) => ({
 					...current,
@@ -199,6 +210,7 @@ window.__ModuleLoader__.load({
 			};
 		}
 		function templateCategory(template) {
+			if (template.origin === "personal") return "personal";
 			if (template.origin === "extracted") return "custom";
 			return template.category ?? "business";
 		}
@@ -206,10 +218,10 @@ window.__ModuleLoader__.load({
 			return template.source?.visualGrammar ?? "custom";
 		}
 		function templatePreviewPages(template) {
-			return CURATED_TEMPLATE_PREVIEWS[template.id]?.length ?? FALLBACK_TEMPLATE_PREVIEW_PAGE_COUNT;
+			return (template.previewImages ?? CURATED_TEMPLATE_PREVIEWS[template.id])?.length ?? FALLBACK_TEMPLATE_PREVIEW_PAGE_COUNT;
 		}
 		function TemplatePreview({ template, page = 0 }) {
-			const previewImage = CURATED_TEMPLATE_PREVIEWS[template.id]?.[page];
+			const previewImage = (template.previewImages ?? CURATED_TEMPLATE_PREVIEWS[template.id])?.[page];
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 				className: OfficePptHero_module_css_default.preview,
 				"data-page": page,
@@ -219,6 +231,7 @@ window.__ModuleLoader__.load({
 				children: [previewImage !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("img", {
 					className: OfficePptHero_module_css_default.previewImage,
 					src: previewImage,
+					draggable: false,
 					loading: "lazy",
 					decoding: "async",
 					alt: "",
@@ -379,6 +392,7 @@ window.__ModuleLoader__.load({
 		function reducedMotionPreferred() {
 			return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 		}
+		/* PERSONAL_TEMPLATE_MANAGER */
 		function loadTemplateState(client, timeoutMessage) {
 			const controller = new AbortController();
 			return new Promise((resolve, reject) => {
@@ -410,18 +424,19 @@ window.__ModuleLoader__.load({
 		function OfficePptChooser({ client, mode, sessionId, t }) {
 			const state = useMode(mode, sessionId);
 			const [category, setCategory] = react.useState("all");
+			const [loadAttempt, setLoadAttempt] = react.useState(0);
+			const timeoutMessage = t("templates.loadTimeout");
 
 			react.useEffect(() => {
-				if (mode.snapshot(sessionId).loading || state.templates.length > 0 || state.error !== "") return;
+				let active = true;
 				mode.setLoading(sessionId, true);
-				loadTemplateState(client, t("templates.loadTimeout")).then(next => {
-					mode.setTemplates(sessionId, next.templates);
-					const template = next.templates.find(item => item.id === next.selectedTemplateId);
-					if (template) mode.select(sessionId, template, "ppt");
-					else mode.deselect(sessionId, "ppt");
-					mode.setNotice(sessionId, next.templateMigration?.reason === "template-retired");
-				}).catch(reason => mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason)));
-			}, [client, mode, sessionId, state.loading, state.templates.length, state.error, t]);
+				loadTemplateState(client, timeoutMessage).then(next => {
+					if (active) mode.setTemplateState(sessionId, next);
+				}).catch(reason => {
+					if (active) mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason));
+				});
+				return () => { active = false; };
+			}, [client, mode, sessionId, loadAttempt, timeoutMessage]);
 
 			const choose = async template => {
 				if (state.loading || template.id === state.selectedId) return;
@@ -434,16 +449,19 @@ window.__ModuleLoader__.load({
 				}
 			};
 			const templates = state.templates.filter(template => templateSupportsMode(template, "ppt"));
-			const categories = ["all", ...new Set(templates.map(templateCategory))];
-			const visible = templates.filter(template => category === "all" || templateCategory(template) === category);
+			const categories = ["all", "personal", ...new Set(templates.filter(template => template.origin !== "personal").map(templateCategory))];
+			const visible = templates.filter(template => template.origin !== "personal" && (category === "all" || templateCategory(template) === category));
 			const h = react.createElement;
+			const builtInCards = visible.map(template => h(TemplateCard, {
+				key: template.id, template, selected: template.id === state.selectedId, choose, disabled: state.loading
+			}));
 			return h("section", {
 					"aria-label": t("templates.title"),
 					className: "dsh-ppt-panel", "data-office-ppt-template-panel": "", "data-placement": "bottom"
 				},
 					h("div", { className: "dsh-ppt-panel-header" },
 						h("h2", { className: "dsh-ppt-panel-title" }, t("templates.title"))),
-					state.notice && h("p", { className: "dsh-ppt-panel-notice", role: "status" }, t("templates.migrated")),
+					state.notice && h("p", { className: "dsh-ppt-panel-notice", role: "status" }, t(state.notice === "personal-template-deleted" ? "personal.deletedSelection" : "templates.migrated")),
 					h("div", { className: OfficePptHero_module_css_default.categoryTabs, role: "group", "aria-label": t("templates.categories") },
 						categories.map(item => h("button", {
 							key: item, type: "button", "data-ppt-category": item, "aria-pressed": category === item,
@@ -451,11 +469,12 @@ window.__ModuleLoader__.load({
 						}, t(`templates.category.${item}`)))),
 					h("div", { className: OfficePptHero_module_css_default.templateViewport, "data-office-ppt-template-viewport": "", "data-native-wheel-owner": "", "aria-busy": state.loading },
 						state.error && h("div", { className: OfficePptHero_module_css_default.templateError, role: "alert" }, state.error,
-							state.templates.length === 0 && h("button", { type: "button", className: OfficePptHero_module_css_default.retryButton, onClick: () => mode.setError(sessionId, "") }, t("templates.retry"))),
+							h("button", { type: "button", className: OfficePptHero_module_css_default.retryButton, onClick: () => setLoadAttempt(attempt => attempt + 1) }, t("templates.retry"))),
 						state.loading && templates.length === 0 ? h("div", { className: OfficePptHero_module_css_default.panelState }, t("status.loading")) :
-						h("div", { className: OfficePptHero_module_css_default.templateGrid }, visible.map(template => h(TemplateCard, {
-							key: template.id, template, selected: template.id === state.selectedId, choose, disabled: state.loading
-						})))));
+						category === "all" || category === "personal" ? h(PersonalTemplateManager, {
+							key: sessionId, client, mode, sessionId, state, choose, t, mutable: client.bound === true,
+							builtInCards: category === "all" ? builtInCards : []
+						}) : h("div", { className: OfficePptHero_module_css_default.templateGrid }, builtInCards)));
 		}
 		function OfficePptComposer(props) {
 			const blank = props.useSession(current => current.blank);
@@ -488,6 +507,44 @@ window.__ModuleLoader__.load({
 			"templates.loadTimeout": "模板加载超时，请重试",
 			"templates.retry": "重新加载模板",
 			"templates.category.all": "全部",
+			"templates.category.personal": "自定义",
+			"personal.deletedSelection": "已选个人模板已被删除，请重新选择。",
+			"personal.upload": "上传 PPT 模板",
+			"personal.create": "新建自定义模板",
+			"personal.selected": "已选中",
+			"personal.local": "保存在当前配置 · PPTX",
+			"personal.fileType": "请选择 PPTX 文件",
+			"personal.readFailed": "文件读取失败，请重新选择",
+			"personal.duplicate": "这份文件已在我的模板中，可直接选择使用",
+			"personal.useSame": "做同款",
+			"personal.view": "预览",
+			"personal.zoomIn": "放大",
+			"personal.zoomOut": "缩小",
+			"personal.fit": "适应窗口",
+			"personal.previewFailed": "预览加载失败，请重试",
+			"personal.processing": "正在处理模板…",
+			"personal.completedPages": "已完成",
+			"personal.placeholderNotice": "部分对象已使用占位图，可在 PPT 中替换。",
+			"personal.layouts": "版式",
+			"personal.chooseFile": "重新选择 PPT",
+			"personal.preview": "模板预览",
+			"personal.name": "模板名称",
+			"personal.previous": "上一页",
+			"personal.next": "下一页",
+			"personal.save": "保存模板",
+			"personal.saved": "模板已保存",
+			"personal.cancel": "取消",
+			"personal.edit": "编辑模板",
+			"personal.editTitle": "编辑自定义模板",
+			"personal.description": "模板描述",
+			"personal.descriptionPlaceholder": "描述模板的风格或适用场景（选填）",
+			"personal.update": "保存修改",
+			"personal.close": "关闭",
+			"personal.deleteTitle": "删除模板",
+			"personal.rename": "重命名",
+			"personal.delete": "删除",
+			"personal.deleteHint": "删除模板后，已生成的文件继续保留。",
+			"personal.confirmDelete": "确认删除",
 			"templates.category.custom": "自定义",
 			"templates.category.business": "商务",
 			"templates.category.strategy": "策略",
@@ -554,6 +611,44 @@ window.__ModuleLoader__.load({
 			"templates.loadTimeout": "Template loading timed out. Try again.",
 			"templates.retry": "Reload templates",
 			"templates.category.all": "All",
+			"templates.category.personal": "Custom",
+			"personal.deletedSelection": "The selected personal template was deleted. Choose another template.",
+			"personal.upload": "Upload PPT template",
+			"personal.create": "Create custom template",
+			"personal.selected": "Selected",
+			"personal.local": "Saved in the current profile · PPTX",
+			"personal.fileType": "Choose a PPTX file",
+			"personal.readFailed": "Could not read the file. Choose it again.",
+			"personal.duplicate": "This file is already in My templates. Select it to reuse it.",
+			"personal.useSame": "Use this template",
+			"personal.view": "Preview",
+			"personal.zoomIn": "Zoom in",
+			"personal.zoomOut": "Zoom out",
+			"personal.fit": "Fit to window",
+			"personal.previewFailed": "Could not load preview. Please retry.",
+			"personal.processing": "Processing template…",
+			"personal.completedPages": "Completed",
+			"personal.placeholderNotice": "Some objects use placeholders. You can replace them in the PPT.",
+			"personal.layouts": "Layouts",
+			"personal.chooseFile": "Choose another PPT",
+			"personal.preview": "Template preview",
+			"personal.name": "Template name",
+			"personal.previous": "Previous page",
+			"personal.next": "Next page",
+			"personal.save": "Save template",
+			"personal.saved": "Template saved",
+			"personal.cancel": "Cancel",
+			"personal.edit": "Edit template",
+			"personal.editTitle": "Edit custom template",
+			"personal.description": "Template description",
+			"personal.descriptionPlaceholder": "Describe its style or use cases (optional)",
+			"personal.update": "Save changes",
+			"personal.close": "Close",
+			"personal.deleteTitle": "Delete template",
+			"personal.rename": "Rename",
+			"personal.delete": "Delete",
+			"personal.deleteHint": "Generated files are preserved when you delete a template.",
+			"personal.confirmDelete": "Confirm delete",
 			"templates.category.custom": "Custom",
 			"templates.category.business": "Business",
 			"templates.category.strategy": "Strategy",
@@ -614,11 +709,10 @@ window.__ModuleLoader__.load({
 		* @returns Session-bound Office PPT client.
 		*/
 		function createOfficePptClient(rpc, sessionId) {
-			return { async call(endpoint, payload = {}, signal) {
-				const outer = await rpc.call("/dsh-ppt", endpoint, {
-					sessionId,
-					...payload
-				}, signal);
+			const bound = typeof sessionId === "string" && sessionId.trim().length > 0;
+			return { bound, async call(endpoint, payload = {}, signal) {
+				if (!bound) throw new Error("PPT session is not ready");
+				const outer = await rpc.call("/dsh-ppt", endpoint, { ...payload, sessionId }, signal);
 				if (!outer.ok) throw new Error(outer.error.message);
 				const raw = outer.value;
 				if (raw === null || typeof raw !== "object" || !("status" in raw)) throw new Error("Office PPT returned an invalid response");

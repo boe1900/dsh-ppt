@@ -1,4 +1,4 @@
-# DSH 0.1.7 host-plane registration. Session tools and the Skill are mounted
+# DSH 0.2.1 host registration. Session tools and the Skill are mounted
 # by presets/ppt.patch.yml through the native agent-preset mechanism.
 - insert:
     - id: dsh-ppt

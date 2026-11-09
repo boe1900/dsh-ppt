@@ -23,3 +23,7 @@ export declare const Config: z<Config>;
 /** Compose storage, browser RPC, and bounded model tools. */
 export declare function apply(ctx: Context, config: Config): Promise<void>;
 export type { PptService } from './ppt-service.ts';
+export declare const PPT_SERVICE = "dshPptService";
+export declare const PPT_SKILL_ROOT = "dshPptSkillRoot";
+export { registerPptSkill } from './ppt-ppt-skill.js';
+export { registerPptTools } from './ppt-tools.js';

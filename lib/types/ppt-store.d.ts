@@ -1,5 +1,6 @@
 /** Session-confined persistence for the DSH PPTD route. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
+import type { PersonalTemplateLibrary } from './personal-templates.js';
 import type { OfficeActivity, OfficeDeck, OfficePptState } from './protocol.ts';
 /** Storage ceilings used by the PPT route. */
 export interface KimiStoreLimits {
@@ -23,10 +24,12 @@ export interface PptdProjectFiles {
 export declare class PptStore {
     private readonly limits;
     readonly root: string;
+    personalTemplates?: PersonalTemplateLibrary;
     private auditTail;
     constructor(root: string, limits: KimiStoreLimits);
     private sessionDirectory;
     private statePath;
+    catalog(): Promise<OfficePptState>;
     readState(sessionId: SessionId): Promise<OfficePptState>;
     assertDeckCapacity(state: OfficePptState): void;
     writeState(state: OfficePptState): Promise<void>;
