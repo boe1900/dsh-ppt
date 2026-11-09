@@ -19,4 +19,6 @@
 
 Harness 接口以 `0.2.1-rc.5` 为兼容和开发基线。PPTD 工具通过宿主的 `workingDirectory` 与 `sandboxPolicy` 服务取得实际目录和权限。`scripts/check-upstream.mjs` 可核对未改动的上游核心模块与三份 Skill 文档；本地接入层和 SDK 适配单独测试。
 
+Harness rc.5 的 profile 包解析器无法解析 JSdom 间接依赖中的 `punycode/`。发布构建将 JSdom 及纯 JavaScript 依赖打包到 `lib/vendor`，同时保留默认样式表、同步 XHR worker 和依赖许可证。核心模块只将 JSdom 导入改为本地适配器，核对上游时仅归一化这一导入路径。DOM 实现仍为上游固定的 JSdom 29.1.1，无需修改宿主或执行消费者安装脚本。
+
 上游自身说明其运行时代码来自已分发 JavaScript，完整原始 TypeScript 实现不可得。保留实现中的来源声明，并同步对应声明文件。PPT 核心原始 MIT 声明位于根 LICENSE，桌面项目 MIT 声明位于 `licenses/dsh-desktop-LICENSE`，其他归属见 THIRD_PARTY_NOTICES.md。

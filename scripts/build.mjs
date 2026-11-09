@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import './build-dom.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const references = path.join(root, 'skills/dsh-ppt/references');

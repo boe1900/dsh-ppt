@@ -7,13 +7,15 @@ const checkout = process.argv[2];
 assert(checkout, 'Usage: node scripts/check-upstream.mjs /path/to/dsh-desktop');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const upstream = path.resolve(checkout, 'packages/ppt-runtime/core/lib');
-const adapters = new Set(['index.js', 'invariant.js', 'office-template-preview.js', 'client.js', 'catalog.js', 'preview-manifest.js']);
+const adapters = new Set(['index.js', 'invariant.js', 'office-template-preview.js', 'client.js', 'catalog.js', 'preview-manifest.js', 'jsdom.js']);
 const runtimeFiles = names => names.filter(name => name.endsWith('.js') && !adapters.has(name) && name !== 'preset.js').sort();
 const files = runtimeFiles(await readdir(upstream));
 assert.deepEqual(runtimeFiles(await readdir(path.join(root, 'lib'))), files, 'Upstream runtime module list differs');
 let compared = 0;
 for (const name of files) {
-  assert.deepEqual(await readFile(path.join(root, 'lib', name)), await readFile(path.join(upstream, name)), `Upstream runtime differs: ${name}`);
+  const local = (await readFile(path.join(root, 'lib', name), 'utf8'))
+    .replace(/from (['"])\.\/jsdom\.js\1/g, 'from $1jsdom$1');
+  assert.equal(local, await readFile(path.join(upstream, name), 'utf8'), `Upstream runtime differs: ${name}`);
   compared++;
 }
 assert(compared > 0, 'No upstream runtime modules found');

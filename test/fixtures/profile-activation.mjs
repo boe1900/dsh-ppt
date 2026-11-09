@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = path.resolve(process.argv[2] ?? fileURLToPath(new URL('../../', import.meta.url)));
 const pluginRequire = createRequire(path.join(root, 'package.json'));
 const installAnchor = process.argv[3] ?? pluginRequire.resolve('@deepseek-ai/dsh/package.json');
+const profileDir = path.resolve(process.argv[4] ?? root);
 const hostRequire = createRequire(installAnchor);
 const { Context } = await import(pathToFileURL(hostRequire.resolve('@deepseek-ai/cordis')));
 const { PluginPackages, createRuntimeResolution } = await import(pathToFileURL(hostRequire.resolve('@deepseek-ai/dsh-app-boot')));
@@ -19,14 +20,15 @@ const scratch = await mkdtemp(path.join(os.tmpdir(), 'dsh-ppt-profile-'));
 try {
   new PluginPackages(ctx, { resolution: {
     ...base,
-    profilesDir: path.dirname(root),
-    profileDir: root,
+    profilesDir: path.dirname(profileDir),
+    profileDir,
     localPackageNames: ['@cola1900/dsh-ppt'],
     linkedRoots: [],
   } });
   const plugin = await import(pathToFileURL(path.join(root, 'lib/index.js')));
   let rpc;
   ctx.provide('connection', { rpc: { handle: (_channel, handler) => { rpc = handler; } } });
+  ctx.provide('webServer', { register: () => () => {} });
   await ctx.plugin(plugin, { root: scratch });
   const state = await rpc('state', { sessionId: 'profile-activation' });
   assert.equal(state.ok, true);
@@ -39,7 +41,7 @@ try {
   const result = await convertPptxToPptd(bytes, 'profile.pptx');
   assert.equal(result.slideCount, 1);
   assert.equal(result.outputElementCount, 1);
-  assert.match([...result.project.pages.values()].join('\n'), /Profile import regression/);
+  assert.match([...result.source.pages.values()].join('\n'), /Profile import regression/);
   console.log('Profile plugin activation and PPTX conversion passed');
 } finally {
   await ctx.fiber.dispose();

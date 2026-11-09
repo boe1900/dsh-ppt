@@ -24,6 +24,8 @@ Modified 2026-09-06 by DSH Desktop contributors: added native PPTD layouts, orig
 
 Other runtime dependencies retain their own package licenses. No font binary is included in these template packs; font names request installed fonts or renderer fallback.
 
+JSdom 29.1.1 and its JavaScript dependencies are bundled for compatibility with the Harness profile resolver. Their package licenses are included in `lib/vendor/LICENSES.txt`; source legal notices accompany the generated bundles. The build only relocates JSdom's default stylesheet and synchronous XHR worker references. Optional native canvas support remains external.
+
 ## Zara template adaptations
 
 Copyright (c) 2026 Zara Zhang. Ten templates adapt beautiful-html-templates at e5e204fb1f3b06290846e7dcd7aceddabeceec8c under MIT. See licenses/zara/LICENSE and the pinned design/HTML source files. DSH rebuilt native editable layouts and expanded each of the ten templates to twelve layouts, added English and Chinese examples, replaced web-only typefaces with documented Office font pairs, and generated new previews.

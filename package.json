@@ -1,7 +1,7 @@
 {
   "name": "@cola1900/dsh-ppt",
   "description": "Standalone DSH plugin for PPT authoring, template selection, validation and editable PPTX export",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/boe1900/dsh-ppt.git"
@@ -74,7 +74,6 @@
     "@aiden0z/pptx-renderer": "1.2.4",
     "@deepseek-ai/schemastery": "~3.18.5",
     "js-yaml": "^4.2.0",
-    "jsdom": "29.1.1",
     "pptxgenjs": "^4.0.1",
     "sharp": "^0.35.3",
     "@deepseek-ai/libreoffice-kit": "0.1.5",
@@ -124,6 +123,8 @@
     "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
     "@deepseek-ai/dsh-agent-preset": "0.2.1-rc.5",
-    "@deepseek-ai/dsh": "0.2.1-rc.5"
+    "@deepseek-ai/dsh": "0.2.1-rc.5",
+    "esbuild": "0.28.2",
+    "jsdom": "29.1.1"
   }
 }
