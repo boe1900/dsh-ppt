@@ -32,7 +32,7 @@ export declare class PptService {
     selectDocumentTemplate(sessionId: SessionId, template: { id: string; mode: 'word' | 'excel'; revision: string }, actor: PptActor): Promise<boolean>;
     deselectDocumentTemplate(sessionId: SessionId, actor: PptActor): Promise<boolean>;
     deselectTemplate(sessionId: SessionId, actor: PptActor): Promise<boolean>;
-    createPptdDeck(sessionId: SessionId, project: PptdProject, requestedFileName: string, workspaceRoot: string, actor: PptActor, signal: AbortSignal): Promise<OfficeDeck>;
+    createPptdDeck(sessionId: SessionId, project: PptdProject, requestedFileName: string, workspaceRoot: string, actor: PptActor, signal: AbortSignal, callId?: string): Promise<OfficeDeck>;
     private mutate;
     private activity;
     private withLock;

@@ -1,0 +1,739 @@
+diff --git a/lib/index.js b/lib/index.js
+index a543923..40721cc 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1,7 +1,11 @@
++import { PptStore } from './ppt-store.js';
++import { PptExports, exportFingerprint } from './ppt-exports.js';
++import { AuthoredTemplateLibrary } from './authored-templates.js';
++import { TemplateAuthoring } from './template-authoring.js';
+ import { parseImageContract } from "./template-image-contract.js";
+ import { workspaceDirectory } from './workspace-directory.js';
+ import { validationSchema, validationReport, formatValidation } from "./validation.js";
+-import { MAX_PERSONAL_TEMPLATE_HTTP_BODY_BYTES, PersonalTemplateLibrary } from "./personal-templates.js";
++import { MAX_PERSONAL_TEMPLATE_HTTP_BODY_BYTES } from "./personal-templates.js";
+ import { personalTemplateSourceTheme, personalTemplateDesignProfile, personalTemplatePageSummary } from './personal-template-profile.js';
+ /**
+  * 实现方案参考了 Kimi PPT（Kimi Slides）的 PPTD 文档与示例：
+@@ -15,7 +19,7 @@ import { definitions as DSH_PPT_TEMPLATE_DEFINITIONS, semantics as DSH_PPT_TEMPL
+ import { i as renderPptdProject, n as loadPptdProject, o as recommendedTextCapacity, r as parsePptdProject, t as checkPptdProject } from "./pptd-2VqVzr_T.js";
+ import z from "@deepseek-ai/schemastery";
+ import { fileURLToPath } from "node:url";
+-import { access, appendFile, link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
++import { access, link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+ import path from "node:path";
+ import { BUNDLED_SKILL_RANK, renderSkillContent } from "@deepseek-ai/dsh-skill";
+ import { createHash, randomUUID } from "node:crypto";
+@@ -28,6 +32,8 @@ import { convertPptxToPptd, yamlText, record } from "./pptx-converter.js";
+ const PROVIDER = "dsh-ppt-bundled";
+ /** Stable Skill name shown in the task trajectory for the DSH PPT route. */
+ const DSH_PPT_SKILL_NAME = "dsh-ppt";
++const TEMPLATE_SKILL_NAME = "dsh-ppt-template";
++const TEMPLATE_SKILL_PATH = fileURLToPath(new URL("../skills/dsh-ppt-template/SKILL.md", import.meta.url));
+ const DESCRIPTION = "根据主题、材料和检索事实直接编写本地 PPTD 工程；支持把具体 PPTX 导入为页面骨架并导出可编辑 PPTX。";
+ // The composer button owns activation; generic Skill discovery must not bypass it.
+ const INVOCATION = {
+@@ -65,18 +71,18 @@ function registerPptSkill(ctx, skillRoot) {
+ 	const provider = {
+ 		name: PROVIDER,
+ 		async list() {
+-			return await content().then(() => [candidate]).catch(() => []);
++			return await content().then(() => [candidate, { ...candidate, name: TEMPLATE_SKILL_NAME, description: "通过对话设计可复用 PPT 模板，预览修改后由用户保存到自定义模板库。", locator: TEMPLATE_SKILL_PATH }]).catch(() => []);
+ 		},
+ 		async get(selected) {
+-			if (selected.name !== "dsh-ppt") return void 0;
++			if (![DSH_PPT_SKILL_NAME, TEMPLATE_SKILL_NAME].includes(selected.name)) return void 0;
+ 			try {
+ 				return {
+-					name: DSH_PPT_SKILL_NAME,
+-					description: DESCRIPTION,
++					name: selected.name,
++					description: selected.name === TEMPLATE_SKILL_NAME ? "引导制作可复用的 PPT 模板" : DESCRIPTION,
+ 					invocation: INVOCATION,
+ 					provider: PROVIDER,
+ 					source: "bundled",
+-					content: await content()
++					content: selected.name === TEMPLATE_SKILL_NAME ? await readFile(TEMPLATE_SKILL_PATH, "utf8") : await content()
+ 				};
+ 			} catch {
+ 				return;
+@@ -734,9 +740,11 @@ var PptService = class {
+ 	constructor(store, limits) {
+ 		this.store = store;
+ 		this.limits = limits;
++		this.templateAuthoring = new TemplateAuthoring(this);
++		this.exports = new PptExports(store);
+ 	}
+-	state(sessionId) {
+-		return this.store.readState(sessionId);
++	async state(sessionId) {
++		return this.templateAuthoring.project(await this.store.readState(sessionId));
+ 	}
+ 	/** Built-in and saved personal templates. Does not read or create a session directory. */
+ 	catalog() {
+@@ -825,14 +833,20 @@ var PptService = class {
+ 			};
+ 		});
+ 	}
+-	createPptdDeck(sessionId, project, requestedFileName, workspaceRoot, actor, signal) {
+-		return this.mutate(sessionId, "create", actor, async (state) => {
++	createPptdDeck(sessionId, project, requestedFileName, workspaceRoot, actor, signal, callId) {
++		return this.withLock(sessionId, async () => {
++			const state = await this.store.readState(sessionId);
++			const started = Date.now(), startedAt = new Date(started).toISOString();
+ 			if (project.pages.length > this.limits.maxSlides) throw new PptError("limit-exceeded", `presentations may contain at most ${this.limits.maxSlides} pages`);
+ 			if (path.extname(requestedFileName).toLowerCase() !== ".pptx") throw new PptError("invalid-request", "PPTD output file name must end in .pptx");
+-			this.store.assertDeckCapacity(state);
+ 			signal.throwIfAborted();
+ 			const template = [typeof project.template?.id === "string" ? project.template.id : void 0, state.selectedTemplateId].filter((value) => value !== void 0).map((id) => state.templates.find((item) => item.id === id && templateSupportsMode(item, "ppt"))).find((value) => value !== void 0) ?? state.templates.find((item) => templateSupportsMode(item, "ppt"));
+ 			if (template === void 0) throw new PptError("not-found", "no PPT template is available for this project");
++			const workspace = await realpath(workspaceRoot);
++			const fingerprint = exportFingerprint(project, workspace, requestedFileName);
++			const previous = await this.exports.find(sessionId, fingerprint, callId, state);
++			if (previous) return this.commitExport(sessionId, state, previous, project);
++			await this.exports.assertCapacity(sessionId, state);
+ 			const planning = planPresentation({
+ 				title: project.title,
+ 				template,
+@@ -846,22 +860,6 @@ var PptService = class {
+ 			const now = (/* @__PURE__ */ new Date()).toISOString();
+ 			const id = OfficeDeckId(randomUUID());
+ 			const revision = 1;
+-			const stored = await this.store.writeOutput(sessionId, {
+-				id,
+-				title: project.title,
+-				revision
+-			}, rendered.bytes, workspaceRoot, {
+-				pptdEntryName: project.source.entryName,
+-				pptdManifest: project.source.manifest,
+-				pptdPages: [...project.source.pages].map(([pagePath, content]) => ({
+-					path: pagePath,
+-					content
+-				})),
+-				assets: [...project.source.assets.values()].map((asset) => ({
+-					path: asset.path,
+-					bytes: asset.bytes
+-				}))
+-			}, path.basename(requestedFileName));
+ 			const qaSlides = planning.slides.map((slide, index) => {
+ 				const issues = rendered.check.issues.filter((item) => item.page === index + 1 && item.severity === "warning");
+ 				return {
+@@ -895,7 +893,6 @@ var PptService = class {
+ 				},
+ 				revision,
+ 				output: {
+-					...stored,
+ 					sha256: createHash("sha256").update(rendered.bytes).digest("hex"),
+ 					sizeBytes: rendered.bytes.byteLength,
+ 					nativeObjectCount: rendered.nativeObjectCount,
+@@ -905,44 +902,56 @@ var PptService = class {
+ 				createdAt: now,
+ 				updatedAt: now
+ 			};
+-			return {
+-				state: {
+-					...state,
+-					decks: [deck, ...state.decks]
+-				},
+-				value: deck,
+-				summary: `已把 ${planning.slides.length} 页 PPTD 工程和可编辑 PPTX 发布到工作区`,
+-				facts: {
+-					deckId: id,
+-					templateId: template.id
+-				}
+-			};
++			const activity = this.activity("create", actor, started, startedAt, "completed", `已把 ${planning.slides.length} 页 PPTD 工程和可编辑 PPTX 发布到工作区`);
++			const receipt = await this.exports.reserve(sessionId, fingerprint, callId, deck, rendered.bytes, workspace, requestedFileName, activity);
++			return this.commitExport(sessionId, state, receipt, project);
+ 		});
+ 	}
++	async commitExport(sessionId, state, receipt, project) {
++		const committed = state.decks.find(deck => deck.id === receipt.deck.id);
++		if (committed) {
++			if (!receipt.completed) {
++				await this.store.recordAudit(sessionId, receipt.activity, { deckId: committed.id, templateId: committed.template.id });
++				await this.exports.complete(sessionId, receipt);
++			}
++			return committed;
++		}
++		await this.exports.publish(sessionId, receipt, project);
++		// Publication is recoverable from the receipt; this atomic state write is the business commit.
++		await this.store.prepareAudit(sessionId, receipt.activity, { deckId: receipt.deck.id, templateId: receipt.deck.template.id });
++		await this.store.writeState({ ...state, decks: [receipt.deck, ...state.decks],
++			activities: [receipt.activity, ...state.activities] });
++		await this.store.recordAudit(sessionId, receipt.activity, { deckId: receipt.deck.id, templateId: receipt.deck.template.id });
++		await this.exports.complete(sessionId, receipt);
++		return receipt.deck;
++	}
+ 	async mutate(sessionId, operation, actor, work) {
+ 		return this.withLock(sessionId, async () => {
+ 			const started = Date.now();
+ 			const startedAt = new Date(started).toISOString();
+ 			const state = await this.store.readState(sessionId);
++			let result, activity;
+ 			try {
+-				const result = await work(state);
+-				const activity = this.activity(operation, actor, started, startedAt, "completed", result.summary);
++				result = await work(state);
++				activity = this.activity(operation, actor, started, startedAt, "completed", result.summary);
++				await this.store.prepareAudit(sessionId, activity, result.facts ?? {});
+ 				await this.store.writeState({
+ 					...result.state,
+ 					activities: [activity, ...result.state.activities]
+ 				});
+-				await this.store.appendAudit(sessionId, activity, result.facts ?? {});
+-				return result.value;
+ 			} catch (error) {
++				if (activity) await this.store.discardAudit(activity);
+ 				const normalized = normalizeError(error);
+-				const activity = this.activity(operation, actor, started, startedAt, "failed", "操作失败", normalized.message);
++				const failedActivity = this.activity(operation, actor, started, startedAt, "failed", "操作失败", normalized.message);
+ 				await this.store.writeState({
+ 					...state,
+-					activities: [activity, ...state.activities]
++					activities: [failedActivity, ...state.activities]
+ 				}).catch(() => void 0);
+-				await this.store.appendAudit(sessionId, activity, {}).catch(() => void 0);
++				await this.store.recordAudit(sessionId, failedActivity, {});
+ 				throw normalized;
+ 			}
++			await this.store.recordAudit(sessionId, activity, result.facts ?? {});
++			return result.value;
+ 		});
+ 	}
+ 	activity(operation, actor, started, startedAt, status, summary, error) {
+@@ -1013,7 +1022,13 @@ function pptRpc(service) {
+ 			if (endpoint === "template/catalog") return ok(await service.catalog());
+ 			const sessionId = sessionIdOf(payload);
+ 				switch (endpoint) {
+-				case "template/import-progress": return ok(await service.store.personalTemplates.importProgress(sessionId, request.requestId, request.after));
++				case "template/authoring-state": return ok((await service.state(sessionId)).templateAuthoring ?? null);
++                case "template/authoring-start": return ok(await service.templateAuthoring.start(sessionId));
++                case "template/authoring-guided": return ok(await service.templateAuthoring.guided(sessionId, request.workflowId));
++                case "template/authoring-exit": return ok(await service.templateAuthoring.exit(sessionId, request.workflowId));
++                case "template/authoring-preview": return ok(await service.templateAuthoring.preview(sessionId, request));
++                case "template/authoring-save": return ok(await service.templateAuthoring.save(sessionId, request));
++                case "template/import-progress": return ok(await service.store.personalTemplates.importProgress(sessionId, request.requestId, request.after));
+ 				case "template/upload-start": return ok(await service.store.personalTemplates.uploadStart(sessionId, request.input));
+ 				case "template/upload-chunk": return ok(await service.store.personalTemplates.uploadChunk(sessionId, request));
+ 				case "template/upload-cancel": return ok(await service.store.personalTemplates.cancelUpload(sessionId, request.uploadId));
+@@ -1314,219 +1329,6 @@ function pptTemplate(definition) {
+ }
+ const BUILT_IN_TEMPLATES = DSH_PPT_TEMPLATE_DEFINITIONS.map(pptTemplate);
+ if (new Set(BUILT_IN_TEMPLATES.map(template => template.id)).size !== BUILT_IN_TEMPLATES.length) throw new Error("内置模板标识重复");
+-//#region lib/types/ppt-store.js
+-/** Session-confined persistence for the DSH PPTD route. */
+-function sessionKey(sessionId) {
+-	return createHash("sha256").update(sessionId).digest("hex").slice(0, 32);
+-}
+-function safeName(value) {
+-	return (value.normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "") || "presentation").slice(0, 96);
+-}
+-/** Retired built-ins never re-enter the live catalog through persisted state. */
+-function persistedState(value, sessionId, personalTemplates = []) {
+- const record = typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+- const legacySelection = typeof record.selectedTemplateId === "string" ? record.selectedTemplateId : undefined;
+- const requested = legacySelection?.replace(/^kimi-(work|consulting)-curated-/, "dsh-$1-curated-");
+- const templates = [...BUILT_IN_TEMPLATES, ...personalTemplates];
+- const selected = templates.find(template => template.id === requested);
+- const missingPersonal = requested?.startsWith("personal-") && selected === undefined;
+- const retired = requested !== undefined && selected === undefined && !missingPersonal;
+- const fallback = BUILT_IN_TEMPLATES.find(template => template.id === "dsh-engineering-blueprint") ?? BUILT_IN_TEMPLATES[0];
+- const selectedTemplateId = retired ? fallback.id : selected?.id;
+- return {
+-  sessionId, templates,
+-  // Preserve historical decks and generated files; they are user-owned records.
+-  decks: Array.isArray(record.decks) ? record.decks : [],
+-  activities: Array.isArray(record.activities) ? record.activities : [],
+-  ...(['word', 'excel'].includes(record.documentMode) ? { documentMode: record.documentMode } :
+-      record.presentationMode === "ppt" ? { presentationMode: "ppt" } : {}),
+-  ...(['word', 'excel'].includes(record.documentMode) && record.selectedDocumentTemplate?.mode === record.documentMode
+-      && /^[a-z0-9-]{1,96}$/.test(record.selectedDocumentTemplate?.id ?? '') && /^[a-zA-Z0-9.-]{1,96}$/.test(record.selectedDocumentTemplate?.revision ?? '')
+-      ? { selectedDocumentTemplate: { id: record.selectedDocumentTemplate.id, mode: record.documentMode, revision: record.selectedDocumentTemplate.revision } } : {}),
+-  ...(selectedTemplateId === undefined ? {} : { selectedTemplateId }),
+-  ...(missingPersonal ? { templateMigration: { reason: "personal-template-deleted" } } : retired ? { templateMigration: { reason: "template-retired", replacementId: fallback.id } } :
+-     record.templateMigration?.reason === "template-retired" ? { templateMigration: record.templateMigration } : {})
+- };
+-}
+-/** Local store containing only PPT route state, source projects, and output files. */
+-var PptStore = class {
+-	limits;
+-	root;
+-	auditTail = Promise.resolve();
+-	constructor(root, limits) {
+-		this.limits = limits;
+-		if (!path.isAbsolute(root)) throw new Error("DSH PPT root must be an absolute path");
+-		this.root = path.resolve(root);
+-	}
+-	sessionDirectory(sessionId) {
+-		return path.join(this.root, "sessions", sessionKey(sessionId));
+-	}
+-	statePath(sessionId) {
+-		return path.join(this.sessionDirectory(sessionId), "state.json");
+-	}
+-	async catalog() {
+-		const personalTemplates = await this.personalTemplates?.list() ?? [];
+-		return persistedState({}, "", personalTemplates);
+-	}
+-	async readState(sessionId) {
+-		const personalTemplates = await this.personalTemplates?.list() ?? [];
+-		try {
+-			return persistedState(JSON.parse(await readFile(this.statePath(sessionId), "utf8")), sessionId, personalTemplates);
+-		} catch (error) {
+-			if (error.code !== "ENOENT") throw error;
+-			return {
+-				sessionId,
+-				templates: [...BUILT_IN_TEMPLATES, ...personalTemplates],
+-				decks: [],
+-				activities: []
+-			};
+-		}
+-	}
+-	assertDeckCapacity(state) {
+-		if (state.decks.length >= this.limits.maxDecksPerSession) throw new Error("session deck limit exceeded");
+-	}
+-	async writeState(state) {
+-		if (state.decks.length > this.limits.maxDecksPerSession) throw new Error("session deck limit exceeded");
+-		const bounded = {
+-			...state,
+-			templates: BUILT_IN_TEMPLATES,
+-			activities: state.activities.slice(0, this.limits.maxActivities)
+-		};
+-		await mkdir(this.sessionDirectory(state.sessionId), {
+-			recursive: true,
+-			mode: 448
+-		});
+-		const target = this.statePath(state.sessionId);
+-		const temporary = `${target}.${randomUUID()}.tmp`;
+-		const handle = await open(temporary, "wx", 384);
+-		try {
+-			await handle.writeFile(`${JSON.stringify(bounded, null, 2)}\n`);
+-			await handle.sync();
+-		} finally {
+-			await handle.close();
+-		}
+-		try {
+-			await rename(temporary, target);
+-		} catch (error) {
+-			await unlink(temporary).catch(() => void 0);
+-			throw error;
+-		}
+-	}
+-	async writeOutput(sessionId, deck, bytes, workspaceRoot, project, requestedFileName) {
+-		const directory = path.join(this.sessionDirectory(sessionId), "outputs");
+-		await mkdir(directory, {
+-			recursive: true,
+-			mode: 448
+-		});
+-		const storageFileName = `${safeName(deck.title)}-${deck.id}-r${deck.revision}.pptx`;
+-		const target = path.join(directory, storageFileName);
+-		const temporary = `${target}.${randomUUID()}.tmp`;
+-		await this.writeFile(temporary, bytes, 384);
+-		try {
+-			await rename(temporary, target);
+-		} catch (error) {
+-			await unlink(temporary).catch(() => void 0);
+-			throw error;
+-		}
+-		try {
+-			const workspace = await this.publishWorkspaceOutput(workspaceRoot, deck, bytes, project, requestedFileName);
+-			return {
+-				storageKey: path.relative(this.root, target),
+-				fileName: path.basename(workspace.workspaceFilePath),
+-				...workspace
+-			};
+-		} catch (error) {
+-			await unlink(target).catch(() => void 0);
+-			throw error;
+-		}
+-	}
+-	async appendAudit(sessionId, activity, facts) {
+-		const line = JSON.stringify({
+-			sessionKey: sessionKey(sessionId),
+-			...activity,
+-			...facts
+-		});
+-		const write = this.auditTail.catch(() => void 0).then(async () => {
+-			await mkdir(this.root, {
+-				recursive: true,
+-				mode: 448
+-			});
+-			await appendFile(path.join(this.root, "audit.ndjson"), `${line}\n`, {
+-				encoding: "utf8",
+-				mode: 384
+-			});
+-		});
+-		this.auditTail = write;
+-		await write;
+-	}
+-	async publishWorkspaceOutput(workspaceRoot, deck, bytes, project, requestedFileName) {
+-		if (!path.isAbsolute(workspaceRoot)) throw new Error("DSH PPT workspace root must be absolute");
+-		const workspace = await realpath(workspaceRoot);
+-		if (!(await stat(workspace)).isDirectory()) throw new Error("DSH PPT workspace root must be a directory");
+-		const title = safeName(deck.title);
+-		const directoryBase = deck.revision === 1 ? title : `${title}-r${deck.revision}`;
+-		const temporary = path.join(workspace, `.${directoryBase}.${randomUUID()}.tmp`);
+-		let published = false;
+-		await mkdir(temporary, { mode: 493 });
+-		try {
+-			await this.writeProjectFile(temporary, project.pptdEntryName, project.pptdManifest);
+-			for (const page of project.pptdPages) await this.writeProjectFile(temporary, page.path, page.content);
+-			for (const asset of project.assets) await this.writeProjectFile(temporary, asset.path, asset.bytes);
+-			if (path.extname(requestedFileName).toLowerCase() !== ".pptx") throw new Error("DSH PPT output file name must end in .pptx");
+-			const visibleFileName = `${safeName(path.basename(requestedFileName, path.extname(requestedFileName)))}.pptx`;
+-			await this.writeFile(path.join(temporary, visibleFileName), bytes, 420);
+-			for (let suffix = 1; suffix <= 1e4; suffix += 1) {
+-				const directoryName = suffix === 1 ? directoryBase : `${directoryBase}-${suffix}`;
+-				const target = path.join(workspace, directoryName);
+-				try {
+-					await lstat(target);
+-					continue;
+-				} catch (error) {
+-					if (error.code !== "ENOENT") throw error;
+-				}
+-				try {
+-					await rename(temporary, target);
+-					published = true;
+-					return {
+-						workspaceDirectoryPath: target,
+-						workspaceFilePath: path.join(target, visibleFileName)
+-					};
+-				} catch (error) {
+-					const code = error.code;
+-					if (code === "EEXIST" || code === "ENOTEMPTY") continue;
+-					throw error;
+-				}
+-			}
+-			throw new Error(`DSH PPT workspace has too many outputs named ${directoryBase}`);
+-		} finally {
+-			if (!published) await rm(temporary, {
+-				recursive: true,
+-				force: true
+-			}).catch(() => void 0);
+-		}
+-	}
+-	async writeFile(target, content, mode) {
+-		const handle = await open(target, "wx", mode);
+-		try {
+-			await handle.writeFile(content);
+-			await handle.sync();
+-		} finally {
+-			await handle.close();
+-		}
+-	}
+-	async writeProjectFile(root, relative, content) {
+-		if (relative === "" || path.isAbsolute(relative) || relative.includes("\\") || relative.includes("\0")) throw new Error(`DSH PPT project path is unsafe: ${relative}`);
+-		const normalized = path.posix.normalize(relative);
+-		if (normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.startsWith("/")) throw new Error(`DSH PPT project path is unsafe: ${relative}`);
+-		const target = path.join(root, ...normalized.split("/"));
+-		await mkdir(path.dirname(target), {
+-			recursive: true,
+-			mode: 493
+-		});
+-		await this.writeFile(target, content, 420);
+-	}
+-};
+-//#endregion
+ //#region lib/types/pptd-publish.js
+ /** Atomic, non-overwriting publication primitives shared by PPTD CLI and model tools. */
+ async function pathExists(target) {
+@@ -1798,6 +1600,40 @@ async function projectValidationReport(project, input, workspace) {
+ }
+ /** Register the direct PPTD project workflow used by PPT mode. */
+ function registerPptdProjectTools(ctx, service) {
++    ctx.tools.register(defineTool({
++        name: "ppt_template_cancel",
++        description: "Cancel the current template-authoring workflow when the user asks to stop. Keeps workspace source and saved templates. Use workflow_id from authoritative template_authoring; a stale ID cannot cancel a newer workflow.",
++        parameters: { workflow_id: { type: "string", required: true } },
++        output: { schema: { type: "object", additionalProperties: false, properties: { cancelled: { type: "boolean", required: true } } },
++            render: (_args, value) => [{ type: "text", text: value.cancelled ? "已取消模板制作。工作区工程和已保存模板均已保留。" : "该模板流程已结束或已更新，请查看当前状态。" }] },
++        async execute(args, exec) { return { cancelled: await service.templateAuthoring.exit(sessionId(exec), args.workflow_id) }; },
++        presentCall: () => ({ card: "generic", title: "取消模板制作", kind: "execute" })
++    }));
++    ctx.tools.register(defineTool({
++        name: "ppt_template_prepare",
++        description: "Validate and snapshot an existing reusable PPTD template project, then publish all-page previews in the current conversation's template authoring panel. Starts template authoring when needed. Does not save to the library or consume a presentation delivery slot. Use again after revisions; users explicitly name and save the reviewed snapshot in the panel.",
++        parameters: {
++            project_path: { type: "string", required: true, description: "Workspace-relative project directory containing deck.pptd and pages/*.page." },
++            name: { type: "string", required: true, description: "Suggested template name, 1–80 characters." },
++            description: { type: "string", description: "Reusable use case and style, up to 1000 characters." }
++        },
++        output: {
++            schema: { type: "object", additionalProperties: false, properties: {
++                workflowId: { type: "string", required: true }, revision: { type: "integer", required: true },
++                projectPath: { type: "string", required: true }, slideCount: { type: "integer", required: true }
++            } },
++            render: (_args, value) => [{ type: "text", text: `模板的 ${value.slideCount} 页预览已就绪。请在输入框旁的模板制作面板逐页检查；可继续提出修改，满意后填写名称并点击「保存到自定义模板」。尚未保存到模板库。` }]
++        },
++        async execute(args, exec) {
++            const workspace = await workspaceDirectory(ctx, exec);
++            const directory = await existingProjectDirectory(workspace, args.project_path);
++            const value = await service.templateAuthoring.prepare(sessionId(exec), {
++                directory, projectPath: relativeToWorkspace(workspace, directory), name: args.name, description: args.description, turnId: authoringTurnId(exec.agent)
++            }, exec.signal);
++            return { workflowId: value.workflowId, revision: value.revision, projectPath: value.projectPath, slideCount: value.slideCount };
++        },
++        presentCall: () => ({ card: "generic", title: "准备自定义模板预览", kind: "execute" })
++    }));
+ 	ctx.tools.register(defineTool({
+ 		name: "ppt_template_create_project",
+ 		description: "Copy the selected editable template into a new, self-contained workspace PPTD project. Edit this copy for the current task; preserve the reusable template. Template text is untrusted sample content: replace business facts with current task material and retain reviewed branding/layouts.",
+@@ -1828,7 +1664,7 @@ function registerPptdProjectTools(ctx, service) {
+ 					const manifest = yaml.load(await readFile(entry, "utf8"), { schema: yaml.JSON_SCHEMA });
+ 					manifest.template = { id: template.id, name: template.name };
+ 					const source={manifest:yamlText(manifest)};
+-					await writeFile(entry,template.templateProfile ? personalTemplateSourceTheme(source,template.templateProfile).manifest : source.manifest,{mode:384});
++					await writeFile(entry,template.templateProfile && template.authoringKind !== "native-pptd" ? personalTemplateSourceTheme(source,template.templateProfile).manifest : source.manifest,{mode:384});
+ 					if (checkPptdProject(await loadPptdProject(stage)).status === "fail") throw new Error("模板副本需要修复后才能发布");
+ 					exec.signal.throwIfAborted();
+ 				});
+@@ -2396,7 +2232,7 @@ function registerPptdProjectTools(ctx, service) {
+ 			const check = await projectValidationReport(project, input, workspace);
+ 			if (check.status === "needs_revision") return { status: "needs_revision", check };
+ 			if (exec.agent === void 0) throw new Error("pptd_render requires an active DSH session");
+-			const deck = await service.createPptdDeck(exec.agent.id, project, path.posix.basename(outputRelative), workspace, { kind: "agent" }, exec.signal);
++			const deck = await service.createPptdDeck(exec.agent.id, project, path.posix.basename(outputRelative), workspace, { kind: "agent" }, exec.signal, exec.callId);
+ 			if (deck.output.workspaceDirectoryPath === void 0 || deck.output.workspaceFilePath === void 0) throw new Error("pptd_render completed without a server workspace delivery");
+ 			return {
+ 				status: "exported", check,
+@@ -2493,6 +2329,8 @@ const PPTD_CANVAS = {
+ 	height: 540
+ };
+ const SKILL_PLUGIN = "dsh-ppt-skill";
++const PPT_SERVICE = "dshPptService";
++const PPT_SKILL_ROOT = "dshPptSkillRoot";
+ function referenceAttachments(ctx) {
+ 	return ctx.get("attachments");
+ }
+@@ -2628,33 +2466,43 @@ function pptComposerContext(state) {
+ 		"mode: ppt",
+ 		`session_skill: ${DSH_PPT_SKILL_NAME} (host-managed; do not call the skill loader again)`,
+ 		selection,
++        ...(state.templateAuthoring && state.templateAuthoring.phase !== "saved" ? [
++            `template_authoring: ${JSON.stringify(state.templateAuthoring)}`,
++            "Current task is reusable template authoring. Follow dsh-ppt-template. creating means editing, preparing means preview generation, failed/cancelled means no preview was published; continue projectPath and retry ppt_template_prepare after addressing the error. Use ppt_template_cancel with workflow_id if the user asks to stop. Do not use pptd_render as a substitute for template review/save. The user saves explicitly in the template preview card."
++        ] : []),
+ 		"workflow: direct local PPTD authoring with bounded pptd_* tools and final pptd_render conversion"
+ 	].join("\n");
+ }
+-function sourcePluginName(source) {
+-	if (typeof source !== "object" || source === null) return undefined;
+-	if (typeof source.plugin === "string" && source.plugin.length > 0) return source.plugin;
+-	if (typeof source.kind === "string" && source.kind.startsWith("plugin:")) return source.kind.slice("plugin:".length);
+-	return typeof source.kind === "string" ? source.kind : undefined;
++/** Resolve the preset currently running this session, including blank-session switches. */
++function sessionAgentPreset(session) {
++	if (session === void 0 || typeof session !== "object") return void 0;
++	const events = typeof session.snapshotEvents === "function" ? session.snapshotEvents() : Array.isArray(session.events) ? session.events : [];
++	for (let index = events.length - 1; index >= 0; index -= 1) {
++		const event = events[index];
++		if (event?.type === "agent-preset/selected" && typeof event.data?.agentPreset === "string") return event.data.agentPreset;
++	}
++	return typeof session.header?.agentPreset === "string" ? session.header.agentPreset : void 0;
++}
++/** New sessions use the native preset; the state flag remains for old sessions. */
++function isPptSession(agent, state) {
++	const preset = sessionAgentPreset(agent?.session);
++	return preset === "ppt" || (preset === void 0 && state.presentationMode === "ppt");
+ }
+-function hasActiveSkill(agent, cwd) {
++function hasActiveSkill(agent, cwd, name = DSH_PPT_SKILL_NAME) {
+ 	return agent.session.deriveMessages().some((message) => {
+ 		if (message.role !== "user") return false;
+-		if (message.source?.kind === "skill-invocation") return message.source.name === DSH_PPT_SKILL_NAME;
+-		const source = message.source;
+-		if (!source || source.form !== "snapshot") return false;
+-		return sourcePluginName(source) === SKILL_PLUGIN && source.cwd === cwd && Array.isArray(source.sections) && source.sections.some((section) => section.name === "dsh-ppt");
++		if (message.source.kind === "skill-invocation") return message.source.name === name && (message.source.cwd === void 0 || message.source.cwd === cwd);
++		return name === DSH_PPT_SKILL_NAME && message.source.kind === "plugin" && message.source.plugin === SKILL_PLUGIN && message.source.form === "snapshot" && message.source.sections.some((section) => section.name === "dsh-ppt");
+ 	});
+ }
+-async function automaticSkill(ctx, agent, signal, cwd) {
+-	if (hasActiveSkill(agent, cwd)) return void 0;
+-	clearAutomaticPptContext(agent);
+-	const skill = await ctx.skills.get(DSH_PPT_SKILL_NAME, {
++async function automaticSkill(ctx, agent, signal, cwd, name = DSH_PPT_SKILL_NAME) {
++	if (hasActiveSkill(agent, cwd, name)) return void 0;
++	const skill = await ctx.skills.get(name, {
+ 		cwd,
+ 		signal,
+ 		scope: agent
+ 	});
+-	if (skill === void 0) throw new Error(`PPT mode requires registered Skill ${DSH_PPT_SKILL_NAME}`);
++	if (skill === void 0) throw new Error(`PPT mode requires registered Skill ${name}`);
+ 	const skillText = renderSkillContent(skill);
+ 	return createUserMessage({
+ 		content: [{
+@@ -2662,34 +2510,36 @@ async function automaticSkill(ctx, agent, signal, cwd) {
+ 			text: skillText
+ 		}],
+ 		source: {
+-			kind: `plugin:${SKILL_PLUGIN}`,
+-			plugin: SKILL_PLUGIN,
+-			form: "snapshot",
+-			cwd,
+-			sections: [{
+-				name: DSH_PPT_SKILL_NAME,
+-				text: skillText
+-			}]
++			kind: "skill-invocation",
++			name,
++			form: "instructions",
++			cwd
+ 		}
+ 	});
+ }
++function authoringTurnId(agent, messages = []) {
++    const history = typeof agent?.session?.deriveMessages === "function" ? agent.session.deriveMessages() : [];
++    return [...history, ...messages].findLast(message => message.role === "user" && message.source?.kind === "user")?.id;
++}
+ function sessionId(exec) {
+ 	if (exec.agent === void 0) throw new Error("PPT tools require an agent session");
+ 	return exec.agent.id;
+ }
+ /** Retire only host-injected PPT instructions, preserving the append-only transcript. */
+-function clearAutomaticPptContext(agent, staleOnly = false) {
++function clearAutomaticPptContext(agent, staleOnly = false, templateOnly = false) {
+ 	for (const seq of [...agent.session.surface.nodes]) {
+ 		const event = agent.session.eventAt(seq);
+ 		if (event?.type !== "user/message") continue;
+-		const source = event.data?.source;
+-		if (!source || source.form !== "snapshot") continue;
+-		const plugin = sourcePluginName(source);
+-		if (![SKILL_PLUGIN, "dsh-ppt-composer", "kimi-ppt-skill", "kimi-ppt-composer"].includes(plugin)) continue;
+-		if (staleOnly && plugin !== "kimi-ppt-skill" && plugin !== "kimi-ppt-composer" && (plugin !== SKILL_PLUGIN || event.data.content?.some(part => part.type === "text" && part.text.includes("DSH-PPT-AUTHORING-20260910-V4")))) continue;
++		const source = event.data.source;
++		if (templateOnly && !(source.kind === "skill-invocation" && source.name === TEMPLATE_SKILL_NAME)) continue;
++		const isCurrentSkill = source.kind === "skill-invocation" && [DSH_PPT_SKILL_NAME, TEMPLATE_SKILL_NAME].includes(source.name);
++		const isCurrentComposer = source.kind === "dsh-ppt-composer";
++		const isLegacy = source.kind === "plugin" && source.form === "snapshot" && [SKILL_PLUGIN, "dsh-ppt-composer", "kimi-ppt-skill", "kimi-ppt-composer"].includes(source.plugin);
++		if (!isCurrentSkill && !isCurrentComposer && !isLegacy) continue;
++		if (staleOnly && isCurrentSkill) continue;
+ 		agent.session.append("user/message", createUserMessage({
+ 			content: [{ type: "text", text: "[Retired automatic PPT instructions cleared.]" }],
+-			source: { kind: "plugin:dsh-ppt-context-cleared", plugin: "dsh-ppt-context-cleared" }
++			source: { kind: "dsh-ppt-context-cleared" }
+ 		}), {
+ 			surfaceOp: { op: "replace", startSeq: seq, endSeq: seq },
+ 			sourceEventSeqs: [seq]
+@@ -2706,7 +2556,7 @@ function registerPptTools(ctx, service) {
+ 		const scope = record(options.scope);
+ 		const sessionId = options.sessionId ?? scope?.id;
+ 		if (skill.name !== "office-pptx" || typeof sessionId !== "string") return inherited;
+-		const active = (await service.state(sessionId)).presentationMode === "ppt";
++		const active = isPptSession(scope, await service.state(sessionId));
+ 		return active ? { ...inherited, modelInvocable: false } : inherited;
+ 	});
+ 	ctx.systemPrompt.section({
+@@ -2716,39 +2566,47 @@ function registerPptTools(ctx, service) {
+ 	});
+ 	// Resolve the persisted composer state for this assembly, never a process-wide toggle.
+ 	ctx.on("system-prompt/assemble", async (_assembly, { agent }, next) => {
+-		const active = agent !== void 0 && (await service.state(agent.id)).presentationMode === "ppt";
++		const active = agent !== void 0 && isPptSession(agent, await service.state(agent.id));
+ 		const assembly = await next();
+ 		return active ? assembly : {
+ 			...assembly,
+ 			sections: assembly.sections.filter((section) => section.name !== "tool:dsh-ppt")
+ 		};
+ 	});
+-	ctx.on("agent/pre-step", async ({ agent, step, signal }, next) => {
++	ctx.on("agent/pre-step", async ({ agent, signal, messages }, next) => {
+ 		const decision = await next();
+ 		if (decision.kind === "reject" || signal.aborted) return decision;
+-		const context = pptComposerContext(await service.state(agent.id));
++		let state = await service.state(agent.id);
++        if (state.templateAuthoring?.phase === "review") {
++            await service.templateAuthoring.revise(agent.id, authoringTurnId(agent, messages));
++            state = await service.state(agent.id);
++        }
++        const authoring = state.templateAuthoring && state.templateAuthoring.phase !== "saved";
++        if (!authoring) clearAutomaticPptContext(agent, false, true);
++		const context = isPptSession(agent, state) ? pptComposerContext({ ...state, presentationMode: "ppt" }) : void 0;
+ 		if (signal.aborted) return decision;
+ 		if (context === void 0) {
+ 			clearAutomaticPptContext(agent);
+ 			return decision;
+ 		}
+-		clearAutomaticPptContext(agent, true);
+ 		const cwd = await ctx.workingDirectory.ensure(agent, signal);
+-		if (step !== 1 && hasActiveSkill(agent, cwd)) return decision;
+ 		const skill = await automaticSkill(ctx, agent, signal, cwd);
++        const templateSkill = authoring ? await automaticSkill(ctx, agent, signal, cwd, TEMPLATE_SKILL_NAME) : undefined;
++		if (signal.aborted) return decision;
++		clearAutomaticPptContext(agent, true);
+ 		return {
+ 			kind: "enter",
+ 			messages: [
+ 				...decision.messages,
+ 				...skill === void 0 ? [] : [skill],
++                ...templateSkill === undefined ? [] : [templateSkill],
+ 				createUserMessage({
+ 					content: [{
+ 						type: "text",
+ 						text: context
+ 					}],
+ 					source: {
+-						kind: "plugin:dsh-ppt-composer",
+-						plugin: "dsh-ppt-composer",
++						kind: "dsh-ppt-composer",
+ 						form: "snapshot",
+ 						sections: [{
+ 							name: "dsh-ppt-composer",
+@@ -3126,21 +2984,13 @@ function registerPptTools(ctx, service) {
+ /** Cordis plugin identity. */
+ const name = "dsh-ppt";
+ /** Required host services. */
+-const inject = [
+-	"connection",
+-	"tools",
+-	"systemPrompt",
+-	"skills",
+-	"workingDirectory",
+-	"sandboxPolicy"
+-];
++const inject = ["connection"];
+ /** Loader schema with conservative local defaults. */
+ const Config = z.object({
+ 	root: z.string().required(),
+ 	maxSlides: z.natural().min(1).default(40),
+ 	maxDecksPerSession: z.natural().min(1).default(50),
+ 	maxActivities: z.natural().min(1).default(200),
+-	kimiPptSkillRoot: z.string(),
+ 	pptSkillRoot: z.string()
+ });
+ /** Compose storage, browser RPC, and bounded model tools. */
+@@ -3212,19 +3062,14 @@ function registerPptRpcRoute(webCtx, channel, rpcHandler) {
+ async function apply(ctx, config) {
+ 	const bundledPptSkillRoot = fileURLToPath(new URL("../skills/dsh-ppt", import.meta.url));
+ 	registerPreviewAssets(ctx, previewFiles, path.join(bundledPptSkillRoot, "references"));
+-	registerPptSkill(ctx, config.pptSkillRoot ?? config.kimiPptSkillRoot ?? process.env.DSH_PPT_SKILL_ROOT ?? process.env.DSH_KIMI_PPT_SKILL_ROOT ?? bundledPptSkillRoot);
++	ctx.provide(PPT_SKILL_ROOT, config.pptSkillRoot ?? process.env.DSH_PPT_SKILL_ROOT ?? bundledPptSkillRoot);
+ 	const service = new PptService(new PptStore(config.root, {
+ 		maxDecksPerSession: config.maxDecksPerSession ?? 50,
+ 		maxActivities: config.maxActivities ?? 200
+-	}), { maxSlides: config.maxSlides ?? 40 });
+-    ctx.provide('officeModes', {
+-        state: sessionId => service.state(sessionId),
+-        select: (sessionId, mode) => service.selectDocumentMode(sessionId, mode, { kind: 'user' }),
+-        selectTemplate: (sessionId, template) => service.selectDocumentTemplate(sessionId, template, { kind: 'user' }),
+-        deselectTemplate: sessionId => service.deselectDocumentTemplate(sessionId, { kind: 'user' }),
+-        record: (sessionId, operation, facts) => service.mutate(sessionId, operation, { kind: 'agent' }, state => ({ state, value: true, summary: operation, facts }))
+-    });
+-	service.store.personalTemplates = new PersonalTemplateLibrary(service.store, convertPptxToPptd, writePptdProjectSource);
++	}, BUILT_IN_TEMPLATES), { maxSlides: config.maxSlides ?? 40 });
++	ctx.provide(PPT_SERVICE, service);
++	service.store.personalTemplates = new AuthoredTemplateLibrary(service.store, convertPptxToPptd, writePptdProjectSource);
++	await service.store.flushAudits();
+ 	const rpcHandler = pptRpc(service);
+ 	ctx.inject(["webServer"], (webCtx) => {
+ 		registerPptRpcRoute(webCtx, "/dsh-ppt", rpcHandler);
+@@ -3235,7 +3080,6 @@ async function apply(ctx, config) {
+ 			webCtx.connection?.rpc?.handle?.("/kimi-ppt", rpcHandler, { authority: "trusted-host" });
+ 		} catch {}
+ 	});
+-	registerPptTools(ctx, service);
+ }
+ //#endregion
+-export { Config, apply, inject, name };
++export { Config, PPT_SERVICE, PPT_SKILL_ROOT, apply, inject, name, registerPptSkill, registerPptTools };

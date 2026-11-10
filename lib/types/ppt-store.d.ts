@@ -1,7 +1,7 @@
 /** Session-confined persistence for the DSH PPTD route. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { PersonalTemplateLibrary } from './personal-templates.js';
-import type { OfficeActivity, OfficeDeck, OfficePptState } from './protocol.ts';
+import type { OfficeActivity, OfficePptState, OfficeTemplate } from './protocol.ts';
 /** Storage ceilings used by the PPT route. */
 export interface KimiStoreLimits {
     readonly maxDecksPerSession: number;
@@ -26,25 +26,23 @@ export declare class PptStore {
     readonly root: string;
     personalTemplates?: PersonalTemplateLibrary;
     private auditTail;
-    constructor(root: string, limits: KimiStoreLimits);
+    constructor(root: string, limits: KimiStoreLimits, builtInTemplates: readonly OfficeTemplate[]);
     private sessionDirectory;
     private statePath;
     catalog(): Promise<OfficePptState>;
     readState(sessionId: SessionId): Promise<OfficePptState>;
     assertDeckCapacity(state: OfficePptState): void;
     writeState(state: OfficePptState): Promise<void>;
-    writeOutput(sessionId: SessionId, deck: Pick<OfficeDeck, 'id' | 'title' | 'revision'>, bytes: Uint8Array, workspaceRoot: string, project: PptdProjectFiles, requestedFileName: string): Promise<{
-        readonly storageKey: string;
-        readonly fileName: string;
-        readonly workspaceDirectoryPath: string;
-        readonly workspaceFilePath: string;
-    }>;
+    writeJson(target: string, value: unknown): Promise<void>;
+    recordAudit(sessionId: SessionId, activity: OfficeActivity, facts?: Readonly<Record<string, unknown>>): Promise<boolean>;
+    prepareAudit(sessionId: SessionId, activity: OfficeActivity, facts?: Readonly<Record<string, unknown>>): Promise<void>;
+    discardAudit(activity: OfficeActivity): Promise<void>;
+    flushAudits(): Promise<void>;
     appendAudit(sessionId: SessionId, activity: OfficeActivity, facts: {
         readonly deckId?: string;
         readonly templateId?: string;
         readonly mode?: string;
     }): Promise<void>;
-    private publishWorkspaceOutput;
     private writeFile;
     private writeProjectFile;
 }

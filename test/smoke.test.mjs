@@ -119,7 +119,7 @@ test('Cordis loads the single bundle, scopes PPT mode, and exports an editable d
   assert.match(decision.messages[1].content[0].text, /DSH-PPT-AUTHORING-20260910-V4/);
   assert.match(decision.messages[2].content[0].text, /selected_template_id: dsh-blue-professional/);
   for (const message of decision.messages) agent.session.append('user/message', message, { surfaceOp: 'append' });
-  assert.equal((await preStep(agent, 2)).messages.length, 1, 'Tool steps must not duplicate context');
+  assert.deepEqual((await preStep(agent, 2)).messages.slice(1).map(message => message.source.kind), ['dsh-ppt-composer'], 'Tool steps replace authoritative context and retain the active Skill');
   assert.deepEqual((await preStep(agent)).messages.slice(1).map(message => message.source.kind), ['dsh-ppt-composer'], 'Later turns retain the existing skill');
   const restored = { id: agent.id, session: Session.create(agent.id, agent.session.snapshotEvents(), agent.session.header) };
   assert.match((await preStep(restored)).messages.at(-1).content[0].text, /selected_template_id: dsh-blue-professional/);

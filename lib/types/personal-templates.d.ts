@@ -40,6 +40,8 @@ export declare class PersonalTemplateLibrary {
     directory(...parts: string[]): Promise<string>;
     checkedFile(directory: string, file: string): Promise<string>;
     readRecord(id: string): Promise<PersonalTemplateRecord>;
+    savedDraft(sessionId: string, draftId: string, id: string): Promise<PersonalTemplateRecord>;
+    catalogLocked<T>(work: () => Promise<T>): Promise<T>;
     list(): Promise<PersonalTemplateRecord[]>;
     uploadStart(sessionId: string, input: PersonalTemplateUploadInput): ReturnType<PersonalTemplateUploads['start']>;
     uploadChunk(sessionId: string, input: PersonalTemplateUploadChunk): ReturnType<PersonalTemplateUploads['append']>;

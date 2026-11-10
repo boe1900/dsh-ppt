@@ -293,6 +293,9 @@ function TemplateAuthoringPanel({ client, authoring, operation, running, save, e
 }
 const AUTHORING_CSS = `
 .dsh-ppt-authoring-frame{container:dsh-ppt-authoring / inline-size;box-sizing:border-box;display:flex;justify-content:center;flex:none;min-width:0;width:100%;padding:6px calc(var(--dsh-composer-side-clearance,16px) + 16px) 10px}
+.dsh-ppt-authoring-error{box-sizing:border-box;width:100%;max-width:var(--dsh-chat-content-width,920px);padding:16px 24px;border-radius:var(--dsw-radius-xl,20px);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-base,#fff));box-shadow:var(--dsw-elevation-panel,0 2px 12px #00000014);color:var(--dsw-alias-label-primary,#222);font-size:13px;line-height:20px;overflow-wrap:anywhere}
+.dsh-ppt-authoring-error>p{margin:0 0 12px;color:var(--dsw-alias-state-error-primary,#b42318)}
+.dsh-ppt-authoring-error>div{display:flex;flex-wrap:wrap;gap:8px}
 .dsh-ppt-authoring{box-sizing:border-box;display:flex;flex-direction:column;min-width:0;width:100%;max-width:var(--dsh-chat-content-width,920px);max-height:min(60vh,520px);padding:0;border:0;border-radius:var(--dsw-radius-xl,20px);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-base,#fff));box-shadow:var(--dsw-elevation-panel,0 2px 12px #00000014);color:var(--dsw-alias-label-primary,#222);font:inherit;font-size:14px;line-height:1.5;overflow:hidden;--dsw-elevation-stroke-color:var(--dsw-alias-border-l2-darkmode-thin,#ddd);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2,#ccc);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2,#aaa)}
 .dsh-ppt-authoring *{box-sizing:border-box}
 .dsh-ppt-authoring-header{display:flex;justify-content:space-between;align-items:flex-start;flex:none;gap:16px;padding:20px 16px 0 24px}

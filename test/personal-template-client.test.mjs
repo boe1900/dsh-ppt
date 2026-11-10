@@ -473,3 +473,36 @@ test('saved library retains preview, editing, deletion and ordinary first-messag
   assert.equal(doc.querySelector('[data-office-ppt-template-panel]'), null);
   assert.equal(doc.querySelector('[data-template-authoring]'), null);
 });
+
+for (const phase of ['failed', 'cancelled']) test(`${phase} preparation places retry and cancellation beside its error`, async t => {
+  let ui;
+  ui = await fixture(t, {
+    send: async () => { ui.state.templateAuthoring = { ...ui.state.templateAuthoring, phase: 'preparing' }; },
+  });
+  const workflow = { phase, workflowId: 'failed-workflow', revision: 2, name: 'Brand template',
+    projectPath: 'template-project', guideSent: true, error: 'Renderer unavailable' };
+  ui.state.templateAuthoring = workflow;
+  await ui.startConversation(); await ui.reload();
+  const error = ui.doc.querySelector('[data-template-authoring-error]');
+  assert(error);
+  assert.match(error.textContent, /Renderer unavailable/);
+  assert.equal(error.querySelectorAll('button').length, 2);
+  assert.equal(ui.doc.querySelector('[data-template-authoring=review]'), null);
+  await ui.setRunning(true);
+  assert([...error.querySelectorAll('button')].every(button => button.disabled));
+  await ui.setRunning(false);
+  await ui.click(ui.doc.querySelector('[data-template-authoring-error] button'));
+  assert.equal(ui.sent.length, 1);
+  assert.match(ui.sent[0].text, /current template project.*regenerate.*previews/);
+  assert.equal(ui.requests.some(item => item.endpoint === 'template/authoring-start'), false);
+  assert.equal(ui.doc.querySelector('[data-template-authoring-error]'), null);
+  assert.equal(ui.doc.querySelector('button'), null, 'Preparing has no detached stop button');
+  assert.equal(ui.composer.text, 'Keep my existing draft');
+  ui.state.templateAuthoring = workflow;
+  await ui.reload();
+  const buttons = ui.doc.querySelectorAll('[data-template-authoring-error] button');
+  await ui.click(buttons[1]);
+  assert.equal(ui.state.templateAuthoring, undefined);
+  assert.equal(ui.doc.querySelector('[data-template-authoring-error]'), null);
+  assert.equal(ui.sent.length, 1, 'Cancel does not submit a second prompt');
+});

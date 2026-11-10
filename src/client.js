@@ -579,8 +579,18 @@ window.__ModuleLoader__.load({
                 })
             });
             const guidePending = authoring?.phase === "creating" && !authoring.guideSent;
+            const authoringFailed = ["failed", "cancelled"].includes(authoring?.phase);
             const stateLoadError = !blank && !guidePending && operation.kind !== "busy" && state.error;
             return react.createElement(react.Fragment, null,
+                authoringFailed && react.createElement("div", { className: "dsh-ppt-authoring-frame" },
+                    react.createElement("style", null, AUTHORING_CSS),
+                    react.createElement("div", { role: "alert", "data-template-authoring-error": "", className: "dsh-ppt-authoring-error" },
+                    react.createElement("p", null, props.t(authoring.phase === "cancelled" ? "authoring.cancelled" : "authoring.failed"), " ", authoring.error),
+                    react.createElement("div", null,
+                        react.createElement("button", { type: "button", className: "dsh-ppt-authoring-button", disabled: running || operation.kind === "busy", onClick: () => act(async () => {
+                            await props.sendGuide(props.t("authoring.retryPrompt")); await refresh();
+                        }) }, props.t("authoring.retryPreview")),
+                        react.createElement("button", { type: "button", className: "dsh-ppt-authoring-button", disabled: running || operation.kind === "busy", onClick: exit }, props.t("authoring.cancel"))))),
                 !guidePending && !stateLoadError && operation.kind === "error" && react.createElement("p", { role: "alert" }, operation.message),
                 stateLoadError && react.createElement("p", { role: "alert" },
                     props.t("authoring.stateFailed"), " ", stateLoadError, " ",
@@ -593,7 +603,7 @@ window.__ModuleLoader__.load({
                     react.createElement("p", { role: "status" }, props.t("authoring.saved").replace("{name}", savedName)),
                     react.createElement("button", { type: "button", "aria-label": props.t("personal.close"), onClick: () => setSavedName(null),
                         style: { border: 0, background: "none", color: "inherit", font: "inherit", cursor: "pointer" } }, "×")),
-                blank && authoring?.phase !== "creating" && react.createElement(OfficePptChooser, { client: props.client, mode: props.mode,
+                blank && (!authoring || authoring.phase === "saved") && react.createElement(OfficePptChooser, { client: props.client, mode: props.mode,
                     sessionId: props.sessionId, startAuthoring, t: props.t }));
         }
         function OfficePptComposer(props) {
@@ -636,6 +646,11 @@ window.__ModuleLoader__.load({
             "authoring.guidePending": "模板引导尚未发送，点击继续后在对话中开始制作。",
             "authoring.stateFailed": "模板状态加载失败。",
             "authoring.retryGuide": "继续 AI 模板引导",
+            "authoring.failed": "模板预览生成失败，工程已保留。",
+            "authoring.cancelled": "模板预览生成已取消，工程已保留。",
+            "authoring.retryPreview": "重试生成预览",
+            "authoring.cancel": "取消本次制作",
+            "authoring.retryPrompt": "继续当前模板工程，重新生成模板预览。请沿用 template_authoring 中的 projectPath，修复错误后调用 ppt_template_prepare。",
             "authoring.preview": "逐页预览",
             "authoring.review": "已生成 {count} 页模板，检查预览后保存。",
             "authoring.revise": "需要调整？直接在对话里告诉 AI，修改后会更新预览。",
@@ -753,6 +768,11 @@ window.__ModuleLoader__.load({
             "authoring.guidePending": "The template guide has not been sent. Continue the guide to start making your template.",
             "authoring.stateFailed": "Could not load template status.",
             "authoring.retryGuide": "Continue the AI template guide",
+            "authoring.failed": "Template preview generation failed. Your project is preserved.",
+            "authoring.cancelled": "Template preview generation was cancelled. Your project is preserved.",
+            "authoring.retryPreview": "Retry preview generation",
+            "authoring.cancel": "Cancel this template",
+            "authoring.retryPrompt": "Continue the current template project and regenerate its previews. Reuse projectPath from template_authoring, address the error, then call ppt_template_prepare.",
             "authoring.preview": "Preview all pages",
             "authoring.review": "{count} template pages are ready. Review them before saving.",
             "authoring.revise": "To revise, tell AI what to change in the conversation.",

@@ -27,6 +27,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Check out the pinned upstream runtime
+        uses: actions/checkout@v6
+        with:
+          repository: dataelement/dsh-desktop
+          ref: 46666d34277571a7b48ada6060a9428ee503b136
+          path: .upstream
+          persist-credentials: false
+      - name: Verify upstream modules and reviewed patches
+        run: node scripts/check-upstream.mjs .upstream
       - name: Check generated files
         run: git diff --exit-code -- lib/client.js lib/catalog.js lib/preview-manifest.js
       - run: npm pack --quiet
@@ -35,4 +44,3 @@ jobs:
           name: npm-package
           path: '*.tgz'
           if-no-files-found: error
-

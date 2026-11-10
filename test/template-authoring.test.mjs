@@ -192,7 +192,7 @@ test('cancelled direct prepares do not admit or publish review', { timeout: 1800
     return prepared;
   };
   await assert.rejects(execute(active.signal), /abort/i);
-  assert.equal((await f.request('template/authoring-state')).phase, 'creating');
+  assert.equal((await f.request('template/authoring-state')).phase, 'cancelled');
   assert.deepEqual(await readdir(path.join(f.scratch, 'storage/personal-templates/drafts')), [], 'Cancellation before publication discards the snapshot');
 });
 
@@ -267,4 +267,162 @@ test('persisted authoring state keeps only valid workflow fields', () => {
   assert.equal(normalizeTemplateAuthoring({ workflowId, revision: -1, phase: 'creating' }), undefined);
   assert.deepEqual(normalizeTemplateAuthoring({ workflowId, revision: 1, phase: 'creating', guideSent: true, projectPath: '../escape', secret: 'drop' }),
     { workflowId, revision: 1, guideSent: true, phase: 'creating' });
+});
+
+test('each model step receives the current template and authoring context without duplicating Skills', async t => {
+  const f = await fixture(t);
+  f.user('Create slides with the selected template');
+  const assemble = async number => {
+    const decision = await f.step(number);
+    for (const message of decision.messages) f.agentFor('session-a').session.append('user/message', message, { surfaceOp: 'append' });
+    return f.agentFor('session-a').session.deriveMessages();
+  };
+  const snapshots = messages => messages.filter(message => message.source?.kind === 'dsh-ppt-composer');
+  await f.request('template/select', { templateId: 'dsh-blue-professional', mode: 'ppt' });
+  await assemble(1);
+  let active = await assemble(2);
+  assert.equal(snapshots(active).length, 1, 'A subsequent tool step must retain a current snapshot');
+  assert.match(snapshots(active)[0].content[0].text, /selected_template_id: dsh-blue-professional/);
+  await f.request('template/select', { templateId: 'dsh-broadside', mode: 'ppt' });
+  await f.request('template/authoring-start');
+  active = await assemble(3);
+  assert.equal(snapshots(active).length, 1);
+  assert.match(snapshots(active)[0].content[0].text, /selected_template_id: dsh-broadside/);
+  assert.match(snapshots(active)[0].content[0].text, /template_authoring:/);
+  assert.equal(active.filter(message => message.source?.kind === 'skill-invocation' && message.source.name === 'dsh-ppt').length, 1);
+  const authoring = await f.request('template/authoring-state');
+  await f.request('template/authoring-exit', { workflowId: authoring.workflowId });
+  active = await assemble(4);
+  assert.equal(snapshots(active).length, 1);
+  assert.doesNotMatch(snapshots(active)[0].content[0].text, /template_authoring:/);
+  assert(!active.some(message => message.source?.kind === 'skill-invocation' && message.source.name === 'dsh-ppt-template'));
+});
+
+test('preview failure is explicit, retry reuses the project, and audit failure cannot undo a saved template', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  const library = f.service.store.personalTemplates, prepare = library.prepareAuthored.bind(library);
+  library.prepareAuthored = async () => { throw new Error('renderer unavailable'); };
+  await assert.rejects(f.run('ppt_template_prepare', { project_path: 'template', name: 'Retry me' }), /renderer unavailable/);
+  const failed = await f.request('template/authoring-state');
+  assert.equal(failed.phase, 'failed');
+  assert.equal(failed.projectPath, 'template');
+  assert.equal(failed.error, 'renderer unavailable');
+  const decision = await f.step(2);
+  assert.match(decision.messages.at(-1).content[0].text, /renderer unavailable/);
+  assert.equal(f.service.templateAuthoring.jobs.size, 0);
+  library.prepareAuthored = prepare;
+  await f.run('ppt_template_prepare', { project_path: failed.projectPath, name: failed.name });
+  const review = await f.request('template/authoring-state');
+  assert.equal(review.phase, 'review');
+  assert.equal(review.workflowId, failed.workflowId);
+  assert(review.revision > failed.revision);
+  f.service.store.appendAudit = async () => { throw new Error('audit unavailable'); };
+  const saved = await f.request('template/authoring-save', { ...review, name: 'Saved despite audit outage' });
+  assert.equal(saved.phase, 'saved');
+  assert.equal((await f.request('template/authoring-state')).phase, 'saved');
+  assert.equal((await f.request('state')).templates.find(template => template.id === saved.templateId).name, saved.name);
+  assert((await readdir(path.join(f.service.store.root, 'audit-pending'))).length > 0);
+});
+
+test('failed preparation admission leaves no live job and interrupted preparations offer retry', async t => {
+  const f = await fixture(t);
+  await f.project();
+  const current = await f.request('template/authoring-start');
+  const store = f.service.store, writeState = store.writeState.bind(store);
+  store.writeState = async state => {
+    if (state.templateAuthoring?.phase === 'preparing') throw new Error('reservation write failed');
+    return writeState(state);
+  };
+  await assert.rejects(f.run('ppt_template_prepare', { project_path: 'template', name: 'Never admitted' }), /reservation write failed/);
+  assert.equal(f.service.templateAuthoring.jobs.size, 0);
+  assert.equal((await f.request('template/authoring-state')).phase, 'creating');
+  store.writeState = writeState;
+  await writeState({ ...await store.readState('session-a'), templateAuthoring: {
+    ...current, revision: 1, phase: 'preparing', projectPath: 'template', name: 'Interrupted', guideSent: true,
+  } });
+  const interrupted = await f.request('template/authoring-state');
+  assert.equal(interrupted.phase, 'failed');
+  assert.match(interrupted.error, /中断/);
+  const cancelled = await f.run('ppt_template_cancel', { workflow_id: interrupted.workflowId });
+  assert.equal(cancelled.cancelled, true);
+  assert.equal(await f.request('template/authoring-state'), null);
+  assert.equal((await f.run('ppt_template_cancel', { workflow_id: interrupted.workflowId })).cancelled, false);
+  assert((await readFile(path.join(f.workspace, 'template/deck.pptd'), 'utf8')).includes('version: v2'));
+});
+
+test('failed exit persistence keeps the reviewed snapshot available and conversation cancellation fences stale workflows', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Do not lose this preview' });
+  const review = await f.request('template/authoring-state');
+  const store = f.service.store, writeState = store.writeState.bind(store);
+  store.writeState = async state => { if (!state.templateAuthoring) throw new Error('exit write failed'); return writeState(state); };
+  await assert.rejects(f.run('ppt_template_cancel', { workflow_id: review.workflowId }), /exit write failed/);
+  assert.equal((await f.request('template/authoring-preview', { ...review, page: 1 })).page, 1);
+  store.writeState = writeState;
+  assert.equal((await f.run('ppt_template_cancel', { workflow_id: review.workflowId })).cancelled, true);
+  const next = await f.request('template/authoring-start');
+  assert.equal((await f.run('ppt_template_cancel', { workflow_id: review.workflowId })).cancelled, false);
+  assert.equal((await f.request('template/authoring-state')).workflowId, next.workflowId);
+});
+
+test('a missing unsaved draft cannot claim an unrelated saved template with identical content', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Original' });
+  const first = await f.request('template/authoring-state');
+  await f.request('template/authoring-save', { ...first, name: 'Original' });
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Another review' });
+  const second = await f.request('template/authoring-state');
+  assert.equal(second.templateId, first.templateId);
+  await f.service.store.personalTemplates.cancel('session-a', second.draftId);
+  await assert.rejects(f.request('template/authoring-save', { ...second, name: 'Should not save' }), /ENOENT/);
+  await assert.rejects(f.request('template/authoring-preview', { ...second, page: 1 }), /ENOENT/);
+  assert.equal((await f.request('template/authoring-state')).phase, 'review');
+});
+
+test('conversation cancellation remains responsive while a renderer holds the library processing queue', { timeout: 5000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  const current = await f.request('template/authoring-start');
+  let enter;
+  const entered = new Promise(resolve => { enter = resolve; });
+  const library = f.service.store.personalTemplates;
+  library.prepareAuthored = (_session, _input, signal) => library.locked(async () => {
+    enter();
+    await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  });
+  const pending = f.run('ppt_template_prepare', { project_path: 'template', name: 'Cancel busy renderer' });
+  const rejected = assert.rejects(pending, /abort/i);
+  await entered;
+  assert.equal((await f.request('template/authoring-state')).phase, 'preparing', 'Reading state does not wait for rendering');
+  assert.equal((await f.run('ppt_template_cancel', { workflow_id: current.workflowId })).cancelled, true);
+  await rejected;
+  assert.equal(await f.request('template/authoring-state'), null);
+});
+
+test('bilingual native templates remain listed and reusable after saving', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  const file = path.join(f.workspace, 'template/pages/cover.page');
+  const page = JSON.parse(await readFile(file, 'utf8'));
+  page.elements[0].content.fontFamily = { latin: 'Arial', ea: 'Microsoft YaHei', mac: 'Microsoft YaHei', win: 'Microsoft YaHei' };
+  await writeFile(file, JSON.stringify(page));
+  const original = await readFile(file);
+  await f.run('ppt_template_prepare', { project_path: 'template', name: '双语品牌模板' });
+  const review = await f.request('template/authoring-state');
+  const saved = await f.request('template/authoring-save', { ...review, name: '双语品牌模板' });
+  const brokenId = `personal-${'b'.repeat(64)}`;
+  const brokenDirectory = path.join(f.service.store.personalTemplates.root, 'saved', brokenId);
+  await mkdir(brokenDirectory);
+  await writeFile(path.join(brokenDirectory, 'template.json'), '{broken');
+  const state = await f.request('state');
+  assert.equal(state.templates.filter(template => template.origin !== 'personal').length, 16, 'One broken custom record must not block the built-in catalog');
+  assert(state.templates.some(template => template.id === saved.templateId), 'A saved bilingual template must remain in the catalog');
+  const record = await f.service.store.personalTemplates.readRecord(saved.templateId);
+  assert.equal(record.templateProfile.pages[0].slots[0].fontFace, 'Microsoft YaHei');
+  await f.request('template/select', { templateId: saved.templateId, mode: 'ppt' }, 'session-b');
+  await f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'reused-bilingual' }, 'session-b');
+  assert.deepEqual(await readFile(path.join(f.workspace, 'reused-bilingual/pages/cover.page')), original);
 });

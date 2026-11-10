@@ -470,8 +470,10 @@ export type TemplateAuthoringState = {
     readonly guideSent: boolean;
     readonly turnId?: string;
 } & (
-    | { readonly phase: 'creating'; readonly projectPath?: string; readonly name?: string }
-    | { readonly phase: 'review'; readonly projectPath: string; readonly name: string; readonly draftId: string; readonly templateId: string; readonly slideCount: number }
+    | { readonly phase: 'creating'; readonly projectPath?: string; readonly name?: string; readonly description?: string }
+    | { readonly phase: 'preparing'; readonly projectPath: string; readonly name: string; readonly description?: string }
+    | { readonly phase: 'failed' | 'cancelled'; readonly projectPath: string; readonly name: string; readonly description?: string; readonly error?: string }
+    | { readonly phase: 'review'; readonly projectPath: string; readonly name: string; readonly description?: string; readonly draftId: string; readonly templateId: string; readonly slideCount: number }
     | { readonly phase: 'saved'; readonly templateId: string; readonly name: string }
 );
 /** Session-local state rendered by the PPT view. */
