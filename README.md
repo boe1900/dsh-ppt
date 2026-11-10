@@ -24,7 +24,7 @@ dsh plugin --profile web add @cola1900/dsh-ppt
 
 把 `web` 替换为实际 profile，然后重启该 profile。新版原生预设选择器会出现 **PPT**；选择后，输入框下方显示模板面板，在首次发送前选择模板，再描述需求。首次发送后预设和模板固定，新会话可以重新选择。预设由 bundle patch 注册，不会复制或修改 `$DSH_HOME/.agent-presets` 文件。
 
-界面只使用官方 `conversation.input.dock` 插槽，只设置插件自身样式，不修改原 DSH。模板名称继续在卡片内显示省略号，输入框底部不再显示 `PPT · 模板名` 控件。
+界面使用官方 `conversation.input.dock` 插槽，沿用上游透明模板面板、分类栏、三列卡片和选中边框。面板在输入框下方绝对定位，不占空白会话居中布局的高度；宽度跟随输入卡片和会话视口，滚动区域随窗口高度调整。插件只设置自身样式，不修改原 DSH。模板名称继续在卡片内显示省略号，输入框底部不再显示 `PPT · 模板名` 控件。
 
 新版 DSH 中，主插件只负责路由、预览和持久化状态；PPT 工具、提示词和 Skill 由 `ppt` preset 子插件启用。不要再安装旧的 `dsh-ppt-composer`。
 

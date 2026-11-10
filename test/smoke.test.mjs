@@ -256,7 +256,7 @@ test('native PPT preset shows a one-time template picker below the composer', as
   unmount = () => React.act(async () => mount.unmount());
   const render = () => mount.render(React.createElement('div', { 'data-conversation-scroll': '' },
     React.createElement('div', { 'data-composer-seat': '' },
-    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--dsh-composer-stack-gap)', '--dsh-composer-stack-gap': '8px' } },
+    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', rowGap: '8px', '--dsh-composer-stack-gap': '6px' } },
     React.createElement('div', { 'data-hero-shell': '' }, 'What can I help with?'),
     ...[...seats].map(([name, seat]) => React.createElement(seat.component, {
       key: name, ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank }),
@@ -274,9 +274,10 @@ test('native PPT preset shows a one-time template picker below the composer', as
   const anchor = panel().parentElement;
   assert.equal(dom.window.getComputedStyle(anchor).height, '0px', 'The picker must not add height to the centered composer stack');
   assert.equal(dom.window.getComputedStyle(anchor).order, '1', 'The compatibility dock anchors after the input card');
+  assert.equal(dom.window.getComputedStyle(anchor).marginTop, '-8px', 'The compatibility dock cancels the actual hero gap');
   assert.equal(dom.window.getComputedStyle(panel()).position, 'absolute');
-  assert.equal(dom.window.getComputedStyle(panel()).boxShadow, 'none');
-  assert.equal(dom.window.getComputedStyle(panel()).borderTopWidth, '0px');
+  assert(['', 'none'].includes(dom.window.getComputedStyle(panel()).boxShadow));
+  assert(['', 'none'].includes(dom.window.getComputedStyle(panel()).borderTopStyle));
   assert(doc.querySelector('[data-office-ppt-template-viewport]').hasAttribute('data-native-wheel-owner'));
   flushFrames();
   assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-width'), '720px');
@@ -291,7 +292,7 @@ test('native PPT preset shows a one-time template picker below the composer', as
   dom.window.dispatchEvent(new dom.window.Event('resize'));
   assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-width'), '550px');
   assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-height'), '200px');
-  assert.equal(panel().dataset.placement, 'bottom');
+  assert.equal(anchor.dataset.placement, 'fixed');
   assert.equal(requests.filter(request => request.endpoint === 'state').length, 1);
   assert.equal(doc.querySelector('button[data-desktop-ppt]'), null, 'The old toolbar trigger is gone');
   failSelect = true;
@@ -303,7 +304,8 @@ test('native PPT preset shows a one-time template picker below the composer', as
   assert.equal(state.selectedTemplateId, definitions[0].id);
   assert(panel(), 'The selected template remains visible before the first message');
   assert.equal(choice().getAttribute('aria-pressed'), 'true');
-  assert(doc.querySelector('.dsh-ppt-selected'));
+  assert.equal(choice().closest('article').dataset.selected, 'true');
+  assert.equal(doc.querySelector('.dsh-ppt-selected'), null);
   assert(requests.some(request => request.endpoint === 'template/select' && request.payload.sessionId === 'ui-test'));
   assert.equal(doc.querySelector('.dsh-ppt-trigger'), null);
   agentPreset = 'standard';
