@@ -193,9 +193,32 @@ test('native PPT preset shows a one-time template picker below the composer', as
     }
   });
   let entry;
+  let scrollWidth = 900, scrollBottom = 900, cardWidth = 720, panelTop = 500;
+  const observers = [];
+  const frames = new Map();
+  let frameId = 0;
+  dom.window.requestAnimationFrame = callback => { frames.set(++frameId, callback); return frameId; };
+  dom.window.cancelAnimationFrame = id => frames.delete(id);
+  const flushFrames = () => {
+    const pending = [...frames.values()];
+    frames.clear();
+    for (const callback of pending) callback();
+  };
+  class ResizeObserver {
+    targets = new Set();
+    constructor(callback) { this.callback = callback; observers.push(this); }
+    observe(target) { this.targets.add(target); }
+    disconnect() { this.targets.clear(); }
+  }
+  dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.hasAttribute('data-conversation-scroll')) return { width: scrollWidth, bottom: scrollBottom };
+    if (this.hasAttribute('data-composer-card')) return { width: cardWidth };
+    if (this.hasAttribute('data-office-ppt-template-panel')) return { top: panelTop };
+    return { width: 0, bottom: 0, top: 0 };
+  };
   dom.window.__ModuleLoader__ = { load: value => { entry = value; } };
   vm.runInNewContext(await readFile(path.join(root, 'lib/client.js'), 'utf8'), {
-    window: dom.window, document: dom.window.document, AbortController, Node: dom.window.Node, performance,
+    window: dom.window, document: dom.window.document, AbortController, Node: dom.window.Node, performance, ResizeObserver,
   });
   assert.equal(entry.id, manifest.name);
   const require = createRequire(import.meta.url);
@@ -231,12 +254,15 @@ test('native PPT preset shows a one-time template picker below the composer', as
   });
   const mount = createRoot(dom.window.document.getElementById('root'));
   unmount = () => React.act(async () => mount.unmount());
-  const render = () => mount.render(React.createElement('div', { style: { display: 'flex', flexDirection: 'column' } },
+  const render = () => mount.render(React.createElement('div', { 'data-conversation-scroll': '' },
+    React.createElement('div', { 'data-composer-seat': '' },
+    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--dsh-composer-stack-gap)', '--dsh-composer-stack-gap': '8px' } },
+    React.createElement('div', { 'data-hero-shell': '' }, 'What can I help with?'),
     ...[...seats].map(([name, seat]) => React.createElement(seat.component, {
       key: name, ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank }),
       useSessions: select => select({ byId: { 'ui-test': { projectionValues: { agentPreset } } } }),
       t: key => dictionary[key] ?? key,
-    }))));
+    })), React.createElement('div', { 'data-composer-card': '' }, React.createElement('textarea'))))));
   await React.act(async () => render());
   const doc = dom.window.document;
   const panel = () => doc.querySelector('[data-office-ppt-template-panel]');
@@ -245,6 +271,26 @@ test('native PPT preset shows a one-time template picker below the composer', as
   agentPreset = 'ppt';
   await React.act(async () => render());
   assert(panel());
+  const anchor = panel().parentElement;
+  assert.equal(dom.window.getComputedStyle(anchor).height, '0px', 'The picker must not add height to the centered composer stack');
+  assert.equal(dom.window.getComputedStyle(anchor).order, '1', 'The compatibility dock anchors after the input card');
+  assert.equal(dom.window.getComputedStyle(panel()).position, 'absolute');
+  assert.equal(dom.window.getComputedStyle(panel()).boxShadow, 'none');
+  assert.equal(dom.window.getComputedStyle(panel()).borderTopWidth, '0px');
+  assert(doc.querySelector('[data-office-ppt-template-viewport]').hasAttribute('data-native-wheel-owner'));
+  flushFrames();
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-width'), '720px');
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-height'), '388px');
+  assert.equal(observers.length, 1);
+  assert.deepEqual([...observers[0].targets], [doc.querySelector('[data-conversation-scroll]'), doc.querySelector('[data-composer-card]')]);
+  cardWidth = 600; scrollBottom = 1000;
+  observers[0].callback();
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-width'), '600px');
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-height'), '488px');
+  scrollWidth = 550; scrollBottom = 620; panelTop = 450;
+  dom.window.dispatchEvent(new dom.window.Event('resize'));
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-width'), '550px');
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-height'), '200px');
   assert.equal(panel().dataset.placement, 'bottom');
   assert.equal(requests.filter(request => request.endpoint === 'state').length, 1);
   assert.equal(doc.querySelector('button[data-desktop-ppt]'), null, 'The old toolbar trigger is gone');
@@ -263,12 +309,20 @@ test('native PPT preset shows a one-time template picker below the composer', as
   agentPreset = 'standard';
   await React.act(async () => render());
   assert.equal(panel(), null, 'Switching the native preset hides the picker');
+  assert.equal(observers[0].targets.size, 0, 'Unmount disconnects geometry observations');
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-width'), '');
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-height'), '');
+  dom.window.dispatchEvent(new dom.window.Event('resize'));
+  assert.equal(anchor.style.getPropertyValue('--office-ppt-template-panel-width'), '', 'Unmount removes the resize listener');
   agentPreset = 'ppt';
   await React.act(async () => render());
   assert(panel());
+  assert.equal(frames.size, 1);
   blank = false;
   await React.act(async () => render());
   assert.equal(panel(), null, 'The picker disappears after the session starts');
+  assert.equal(frames.size, 0, 'Unmount cancels a pending geometry frame');
+  assert.equal(observers.at(-1).targets.size, 0);
 });
 
 test('packaged previews are served locally and unknown paths stay inaccessible', async t => {
