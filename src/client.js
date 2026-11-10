@@ -459,8 +459,8 @@ window.__ModuleLoader__.load({
 			const categories = ["all", "personal", ...new Set(templates.filter(template => template.origin !== "personal").map(templateCategory))];
 			const visible = templates.filter(template => template.origin !== "personal" && (category === "all" || templateCategory(template) === category));
 			const h = react.createElement;
-			const builtInCards = visible.map(template => h(TemplateCard, {
-				key: template.id, template, selected: template.id === state.selectedId, choose, disabled: state.loading
+			const builtInCards = visible.map(template => h(TemplatePreviewCard, {
+				key: template.id, template, selected: template.id === state.selectedId, choose, client, t, disabled: state.loading
 			}));
 			return h("section", {
 					ref: modeRootRef,

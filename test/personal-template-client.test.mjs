@@ -97,6 +97,56 @@ async function fixture(t, handlers = {}) {
   };
 }
 
+test('built-in preview eyes browse every page without selecting until explicitly used', async t => {
+  const ui = await fixture(t);
+  const { doc, click } = ui;
+  assert.equal(doc.querySelectorAll('.ppt-preview-open').length, definitions.length);
+  const template = definitions[0];
+  const requestsBeforePreview = ui.requests.length;
+  await click(doc.querySelector('.ppt-preview-open'));
+  const viewer = doc.querySelector('.ppt-template-viewer');
+  assert(viewer.open);
+  assert.equal(viewer.querySelector('h2').textContent, template.name);
+  const page = () => viewer.querySelector('footer [role=status]').textContent;
+  const image = () => viewer.querySelector('img').src;
+  const previous = viewer.querySelector('button[aria-label="Previous page"]');
+  const next = viewer.querySelector('button[aria-label="Next page"]');
+  assert.equal(page(), `1 / ${template.referencePageCount}`);
+  assert(previous.disabled);
+  const firstImage = image();
+  await click(next);
+  assert.equal(page(), `2 / ${template.referencePageCount}`);
+  assert.notEqual(image(), firstImage);
+  await click(previous);
+  assert.equal(image(), firstImage);
+  for (const key of ['ArrowRight', 'ArrowLeft']) {
+    await React.act(async () => viewer.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true })));
+    assert.equal(page(), `${key === 'ArrowRight' ? 2 : 1} / ${template.referencePageCount}`);
+  }
+  for (let index = 1; index < template.referencePageCount; index++) await click(next);
+  assert.equal(page(), `${template.referencePageCount} / ${template.referencePageCount}`);
+  assert(next.disabled);
+  assert.notEqual(image(), firstImage);
+  assert.equal(ui.state.selectedTemplateId, null);
+  assert.equal(doc.querySelector('article button[aria-pressed="true"]'), null);
+  assert.equal(ui.requests.length, requestsBeforePreview);
+  assert.equal(ui.sent.length, 0);
+  await React.act(async () => viewer.dispatchEvent(new window.Event('cancel', { cancelable: true })));
+  assert.equal(doc.querySelector('.ppt-template-viewer'), null);
+  await click(doc.querySelector('.ppt-preview-open'));
+  await click(doc.querySelector('.ppt-preview-use'));
+  assert.equal(doc.querySelector('.ppt-template-viewer'), null);
+  assert.equal(ui.state.selectedTemplateId, template.id);
+  assert.equal(doc.querySelector('article button[aria-pressed="true"]').getAttribute('aria-label'), template.name);
+  assert.equal(ui.requests.filter(item => item.endpoint === 'template/select').length, 1);
+  await click(doc.querySelector('[data-ppt-category]:not([data-ppt-category="all"]):not([data-ppt-category="personal"])'));
+  const categoryEyes = doc.querySelectorAll('.ppt-preview-open');
+  assert(categoryEyes.length > 0);
+  assert.equal(categoryEyes.length, doc.querySelectorAll('article button[aria-pressed]').length);
+  await click(categoryEyes[0]);
+  assert(doc.querySelector('.ppt-template-viewer').open);
+});
+
 test('reopening the picker refreshes profile templates changed in another conversation', async t => {
   const ui = await fixture(t);
   assert.equal(ui.doc.querySelector('[data-personal-card]'), null);
