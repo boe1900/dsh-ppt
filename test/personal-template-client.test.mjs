@@ -122,42 +122,76 @@ test('new template invokes the guide without changing composer text or attachmen
   assert.match(ui.sent[0].text, /Custom in a new PPT conversation/);
   assert.deepEqual(ui.composer, { text: 'Keep my existing draft', attachments: [{ name: 'brand.pptx' }] });
   assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
-  assert.equal(ui.doc.querySelector('[data-template-authoring-actions]').textContent, 'Finish authoring');
+  assert.equal(Boolean(ui.doc.querySelector('button')), false, 'Creating templates must leave no standalone controls');
   assert.equal(ui.doc.querySelector('form'), null);
   await ui.startConversation();
-  assert(ui.doc.querySelector('[data-template-authoring-actions]'), 'An exit action remains after the first message');
+  assert.equal(Boolean(ui.doc.querySelector('button')), false, 'The first message must not add authoring controls');
+  await ui.setRunning(true);
+  assert.equal(Boolean(ui.doc.querySelector('button')), false, 'Generation must not add authoring controls');
+  await ui.setRunning(false);
   await ui.reload();
-  assert(ui.doc.querySelector('[data-template-authoring-actions]'), 'Reload restores the exit action');
+  assert.equal(Boolean(ui.doc.querySelector('button')), false, 'Reload must keep the creating conversation clean');
   assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
   assert.equal(ui.sent.length, 1, 'Reload must not send the guide twice');
   await ui.switchSession('other-session');
   assert.equal(ui.doc.querySelector('[data-template-authoring-actions]'), null);
   await ui.switchSession('custom-template-test');
-  assert(ui.doc.querySelector('[data-template-authoring-actions]'));
+  assert.equal(Boolean(ui.doc.querySelector('button')), false, 'Returning to the workflow must not restore authoring controls');
+  assert.equal(ui.state.templateAuthoring.workflowId, 'workflow-one');
+  assert.equal(ui.state.templateAuthoring.guideSent, true);
   assert.equal(ui.requests.some(item => /upload|template\/cancel/.test(item.endpoint)), false);
-  await ui.click(ui.doc.querySelector('[data-template-authoring-actions] button'));
-  assert.equal(ui.state.templateAuthoring, undefined);
-  assert.equal(ui.doc.querySelector('[data-template-authoring-actions]'), null);
-  assert(ui.requests.some(item => item.endpoint === 'template/authoring-exit' && item.payload.workflowId === 'workflow-one'));
+  assert.equal(ui.requests.some(item => item.endpoint === 'template/authoring-exit'), false);
 });
 
-test('guide admission failure exposes a retry and resumes the same workflow', async t => {
+test('guide admission failure keeps its explanation and retry together across reload and navigation', async t => {
   let attempts = 0;
-  const ui = await fixture(t, { send: () => { if (++attempts === 1) throw new Error('Connection unavailable'); } });
+  const ui = await fixture(t, { send: () => { if (++attempts < 3) throw new Error('Connection unavailable'); } });
   await ui.click(ui.doc.querySelector('.personal-create'));
-  assert.match(ui.doc.querySelector('[role=alert]').textContent, /Connection unavailable/);
+  let alert = ui.doc.querySelector('[role=alert]');
+  assert.match(alert.textContent, /Connection unavailable/);
+  assert(alert.querySelector('button'), 'Guide admission errors must include their retry action');
+  assert.equal(ui.doc.querySelectorAll('button').length, 1, 'Only the contextual retry is shown');
   assert.equal(ui.state.templateAuthoring.guideSent, false);
   assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
   await ui.reload();
   assert.equal(attempts, 1, 'Reload must leave guide retry to the user');
-  const retry = [...ui.doc.querySelectorAll('[data-template-authoring-actions] button')].find(node => /Continue the AI/.test(node.textContent));
+  alert = ui.doc.querySelector('[role=alert]');
+  assert(alert, 'An unsent guide must explain the recovery after reload');
+  let retry = alert.querySelector('button');
+  assert(retry);
+  assert.match(alert.textContent.replace(retry.textContent, ''), /template guide/i);
+  await ui.switchSession('other-session');
+  assert.equal(ui.doc.querySelector('[role=alert]'), null);
+  await ui.switchSession('custom-template-test');
+  alert = ui.doc.querySelector('[role=alert]');
+  assert(alert, 'Returning to an unsent guide must restore contextual recovery');
+  retry = alert.querySelector('button');
+  assert(retry);
+  assert.match(alert.textContent.replace(retry.textContent, ''), /template guide/i);
   await ui.setRunning(true);
   assert(retry.disabled);
   await ui.setRunning(false);
   await ui.click(retry);
+  assert.match(ui.doc.querySelector('[role=alert]').textContent, /Connection unavailable/);
+  await ui.click(ui.doc.querySelector('[role=alert] button'));
   assert.equal(ui.sent.length, 1);
   assert.equal(ui.state.templateAuthoring.workflowId, 'workflow-one');
   assert.equal(ui.state.templateAuthoring.guideSent, true);
+  assert.equal(ui.doc.querySelector('[role=alert]'), null);
+  assert.equal(Boolean(ui.doc.querySelector('button')), false, 'Successful recovery must remove authoring controls');
+  await ui.reload();
+  assert.equal(Boolean(ui.doc.querySelector('button')), false);
+  assert.equal(attempts, 3);
+});
+
+test('a creating workflow does not add controls when polling fails', async t => {
+  const ui = await fixture(t, { 'template/authoring-state': () => { throw new Error('Status unavailable'); } });
+  ui.state.templateAuthoring = { phase: 'creating', workflowId: 'workflow-one', revision: 2, guideSent: true };
+  await ui.startConversation(); await ui.reload();
+  await ui.until(() => ui.doc.querySelector('[role=alert]')?.textContent.includes('Status unavailable'));
+  assert.equal(Boolean(ui.doc.querySelector('button')), false, 'A status error must not restore authoring controls');
+  assert.equal(ui.state.templateAuthoring.guideSent, true);
+  assert.equal(ui.sent.length, 0);
 });
 
 test('review previews every page, blocks save while running, and saves without changing selection', async t => {
@@ -241,7 +275,7 @@ test('review keeps preview retries and explicit exit while creating hides the re
   ui.state.templateAuthoring = { ...ui.state.templateAuthoring, phase: 'creating', revision: 5 };
   await ui.reload();
   assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
-  assert(ui.doc.querySelector('[data-template-authoring-actions]'));
+  assert.equal(Boolean(ui.doc.querySelector('button')), false, 'Revising a template must return to the clean conversation');
   ui.state.templateAuthoring = { ...ui.state.templateAuthoring, phase: 'review', revision: 4 };
   await ui.reload();
   await ui.click(ui.doc.querySelector('[data-template-authoring] header button'));
