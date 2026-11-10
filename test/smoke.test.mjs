@@ -258,11 +258,11 @@ test('native PPT preset shows a one-time template picker below the composer', as
     React.createElement('div', { 'data-composer-seat': '' },
     React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', rowGap: '8px', '--dsh-composer-stack-gap': '6px' } },
     React.createElement('div', { 'data-hero-shell': '' }, 'What can I help with?'),
-    ...[...seats].map(([name, seat]) => React.createElement(seat.component, {
-      key: name, ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank }),
+    ...[...seats].map(([name, seat]) => React.createElement('div', { key: name, 'data-slot': name, style: { display: 'contents' } }, React.createElement(seat.component, {
+      ...seat.injected, sessionId: 'ui-test', useSession: select => select({ blank }),
       useSessions: select => select({ byId: { 'ui-test': { projectionValues: { agentPreset } } } }),
       t: key => dictionary[key] ?? key,
-    })), React.createElement('div', { 'data-composer-card': '' }, React.createElement('textarea'))))));
+    }))), React.createElement('div', { 'data-composer-card': '' }, React.createElement('textarea'))))));
   await React.act(async () => render());
   const doc = dom.window.document;
   const panel = () => doc.querySelector('[data-office-ppt-template-panel]');
