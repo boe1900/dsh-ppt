@@ -18,5 +18,6 @@ export declare class TemplateAuthoring {
     revise(sessionId: string, turnId?: string): Promise<TemplateAuthoringState | undefined>;
     prepare(sessionId: string, input: AuthoredTemplateInput, signal?: AbortSignal): Promise<Extract<TemplateAuthoringState, { phase: 'review' }>>;
     preview(sessionId: string, request: TemplateReviewRequest & { page: number }): Promise<PersonalTemplatePagePreview>;
+    matches(current: TemplateAuthoringState | undefined, request: TemplateReviewRequest): void;
     save(sessionId: string, request: TemplateReviewRequest & { name: string }): Promise<Extract<TemplateAuthoringState, { phase: 'saved' }>>;
 }

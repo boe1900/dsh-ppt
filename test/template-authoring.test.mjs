@@ -13,8 +13,28 @@ import sharp from 'sharp';
 import * as plugin from '../lib/index.js';
 import * as preset from '../lib/preset.js';
 import { normalizeTemplateAuthoring } from '../lib/template-authoring.js';
+import { AuthoredTemplateLibrary } from '../lib/authored-templates.js';
+import { MAX_TEMPLATE_DESIGN_BYTES, parseTemplateDesign } from '../lib/template-design.js';
 
-async function fixture(t) {
+function designSpec() {
+  return {
+    version: 1, purpose: '技术团队向管理层汇报进度与风险',
+    rules: {
+      palette: '米白底 #F4F2ED；深蓝 #123456 正文；琥珀色仅标记风险。',
+      typography: '标题 36 pt，正文 20 pt；中文用微软雅黑；最低 18 pt。',
+      spacing: '960 × 540 pt；左右留白 60 pt；同级内容间距 24 pt。',
+      imagery: '保留品牌图标，业务配图替换为经核实且可用的素材。',
+      data: '图表保留单位、时间范围和来源；示例数据必须替换。',
+      overflow: '长标题允许两行；条目过多拆页，不缩小字号。',
+    },
+    layouts: [
+      { file: 'pages/cover.page', name: '汇报封面', purpose: '说明主题与汇报人', relationship: '主题与署名', capacity: '标题最多 24 个汉字，署名一行', adaptation: '长标题分两行并下移署名', preserve: '品牌图标、配色和左对齐基线', replace: '报告标题、部门与日期' },
+      { file: 'pages/data.page', name: '指标结论', purpose: '展示单一指标及含义', relationship: '结论与证据', capacity: '一项主指标和最多三条解释', adaptation: '四项以上解释拆到下一页', preserve: '指标强调方式和来源区', replace: '指标数值、时间范围、来源与解释' },
+    ],
+  };
+}
+
+async function fixture(t, services = {}) {
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'dsh-template-authoring-'));
   const workspace = path.join(scratch, 'workspace');
   await mkdir(workspace);
@@ -22,6 +42,7 @@ async function fixture(t) {
   let rpc;
   ctx.provide('connection', { rpc: { handle: (_channel, value) => { rpc = value; } } });
   ctx.provide('tools', { register: tool => tools.set(tool.name, tool) });
+  if (services.attachments) ctx.provide('attachments', services.attachments);
   ctx.provide('workingDirectory', { ensure: async () => workspace });
   ctx.provide('sandboxPolicy', { resolve: () => ({ mode: 'workspace-write', workspaceRoot: workspace }) });
   ctx.provide('webServer', { register: () => () => {} });
@@ -70,6 +91,7 @@ async function fixture(t) {
         elements: [{ elementId: 'title', elementType: 'text', bounds: [60, 50, 820, 90], content: { text: title, fontFamily: 'Arial', fontSize: 36, color: '#123456' } }],
       }) });
     }
+    await run('pptd_write_file', { project_path: name, file_path: 'template-design.json', content: JSON.stringify(designSpec(), null, 2) + '\n' });
     return name;
   };
   return { scratch, workspace, ctx, tools, request, run, user, step, agentFor, project, service: ctx.get(plugin.PPT_SERVICE) };
@@ -425,4 +447,202 @@ test('bilingual native templates remain listed and reusable after saving', { tim
   await f.request('template/select', { templateId: saved.templateId, mode: 'ppt' }, 'session-b');
   await f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'reused-bilingual' }, 'session-b');
   assert.deepEqual(await readFile(path.join(f.workspace, 'reused-bilingual/pages/cover.page')), original);
+});
+
+test('design rules and layout intent survive reviewed snapshot, save, reopen and reuse exactly', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  const designFile = path.join(f.workspace, 'template/template-design.json');
+  const bytes = await readFile(designFile);
+  await f.run('ppt_template_prepare', { project_path: 'template', name: '设计系统' });
+  const review = await f.request('template/authoring-state');
+  const draftRoot = path.join(f.service.store.personalTemplates.root, 'drafts', review.draftId, 'project');
+  assert.deepEqual(await readFile(path.join(draftRoot, 'template-design.json')), bytes);
+  await writeFile(designFile, JSON.stringify({ ...designSpec(), purpose: '仅工作区改变' }));
+  const preview = await f.request('template/authoring-preview', { ...review, page: 1 });
+  assert(preview.preview.startsWith('data:image/png;base64,'));
+  const saved = await f.request('template/authoring-save', { ...review, name: '设计系统' });
+  const library = f.service.store.personalTemplates;
+  const reopened = new AuthoredTemplateLibrary(f.service.store, library.convert, library.writeSource);
+  assert.deepEqual(await reopened.readDesign(saved.templateId), designSpec());
+  const savedRoot = await reopened.projectSource(saved.templateId);
+  assert.deepEqual(await readFile(path.join(savedRoot, 'template-design.json')), bytes);
+  const record = await reopened.readRecord(saved.templateId);
+  assert.equal(record.design, undefined, 'The sidecar is the only saved copy of the design rules');
+  await f.request('template/select', { templateId: saved.templateId, mode: 'ppt' }, 'session-b');
+  const reference = await f.run('ppt_get_template_reference', { template_id: saved.templateId }, 'session-b');
+  assert.match(reference.designProfile, /技术团队向管理层/);
+  assert.match(reference.designProfile, /最低 18 pt/);
+  assert.match(reference.designProfile, /几何推断/);
+  assert.equal(reference.pageContracts[1].sourceTitle, '指标结论');
+  assert.equal(reference.pageContracts[1].relationship, '结论与证据');
+  for (const text of ['一项主指标', '四项以上解释', '指标强调方式', '指标数值']) assert(reference.pageContracts[1].structureSummary.includes(text));
+  const pages = await f.run('ppt_get_template_pages', { template_id: saved.templateId, slide_numbers: [2] }, 'session-b');
+  assert.equal(pages[0].sourceTitle, '指标结论');
+  assert.equal(pages[0].relationship, '结论与证据');
+  assert.match(pages[0].structureSummary, /一项主指标/);
+  assert.match(pages[0].simplificationGuidance, /四项以上解释/);
+  assert.match(pages[0].pptdLayoutReference, /示例数据 42/);
+  const copied = await f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'design-reuse' }, 'session-b');
+  assert.equal(copied.designPath, 'design-reuse/template-design.json');
+  assert.deepEqual(await readFile(path.join(f.workspace, copied.designPath)), bytes);
+  await f.run('ppt_template_prepare', { project_path: 'template', name: '同版式不同规范' });
+  const changed = await f.request('template/authoring-state');
+  assert.notEqual(changed.templateId, saved.templateId, 'A guidance-only edit must receive a new content identity');
+});
+
+test('design sidecar uses the bounded text tools and preserves SHA-256 replacement guards', async t => {
+  const f = await fixture(t);
+  await f.project();
+  const args = { project_path: 'template', file_path: 'template-design.json' };
+  const read = await f.run('pptd_read_file', args);
+  const changed = JSON.stringify({ ...designSpec(), purpose: '年度经营汇报' });
+  await assert.rejects(f.run('pptd_write_file', { ...args, content: changed }), /expected_sha256/);
+  await f.run('pptd_write_file', { ...args, content: changed, expected_sha256: read.sha256 });
+  await assert.rejects(f.run('pptd_write_file', { ...args, content: changed, expected_sha256: read.sha256 }), /changed after/);
+  assert.equal(JSON.parse((await f.run('pptd_read_file', args)).content).purpose, '年度经营汇报');
+  assert.equal((await f.run('pptd_list_files', { project_path: 'template' })).files.find(file => file.path === 'template-design.json').kind, 'design');
+  for (const file_path of ['other.json', 'pages/template-design.json', 'Template-design.json', '../template-design.json']) {
+    await assert.rejects(f.run('pptd_write_file', { ...args, file_path, content: '{}' }), /unsupported|inside/);
+    await assert.rejects(f.run('pptd_read_file', { ...args, file_path }), /unsupported|inside/);
+  }
+  await rm(path.join(f.workspace, 'template/template-design.json'));
+  await symlink('deck.pptd', path.join(f.workspace, 'template/template-design.json'));
+  await assert.rejects(f.run('pptd_read_file', args), /regular project file/);
+  await assert.rejects(f.run('pptd_write_file', { ...args, content: changed, expected_sha256: read.sha256 }), /regular PPTD project file/);
+  await assert.rejects(f.run('ppt_template_prepare', { project_path: 'template', name: 'Linked' }), /符号链接/);
+});
+
+test('new template preparation requires complete, bounded design guidance tied to every actual page', async t => {
+  const f = await fixture(t);
+  await f.project();
+  const file = path.join(f.workspace, 'template/template-design.json');
+  await rm(file);
+  await assert.rejects(f.run('ppt_template_prepare', { project_path: 'template', name: 'Missing rules' }), /新建模板需要 template-design.json.*pptd_write_file/);
+  const variants = [
+    ['invalid JSON', '{', /UTF-8 JSON/],
+    ['missing page', { ...designSpec(), layouts: [designSpec().layouts[0]] }, /一一对应/],
+    ['unknown page', { ...designSpec(), layouts: [designSpec().layouts[0], { ...designSpec().layouts[1], file: 'pages/unknown.page' }] }, /一一对应/],
+    ['duplicate page', { ...designSpec(), layouts: [designSpec().layouts[0], designSpec().layouts[0]] }, /重复/],
+    ['foreign path', { ...designSpec(), layouts: [{ ...designSpec().layouts[0], file: '../private.page' }] }, /pages\//],
+    ['unknown field', { ...designSpec(), executable: 'do something' }, /必须且只能/],
+    ['unknown rule', { ...designSpec(), rules: { ...designSpec().rules, fontSzie: 12 } }, /必须且只能/],
+    ['missing rule', { ...designSpec(), rules: {} }, /必须且只能/],
+    ['empty rule', { ...designSpec(), rules: { ...designSpec().rules, overflow: ' ' } }, /具体说明/],
+    ['long field', { ...designSpec(), purpose: 'x'.repeat(2001) }, /2000/],
+    ['long name', { ...designSpec(), layouts: [{ ...designSpec().layouts[0], name: 'x'.repeat(121) }, designSpec().layouts[1]] }, /120/],
+    ['unsupported version', { ...designSpec(), version: 2 }, /version/],
+  ];
+  for (const [label, value, expected] of variants) {
+    await writeFile(file, typeof value === 'string' ? value : JSON.stringify(value));
+    await assert.rejects(f.run('ppt_template_prepare', { project_path: 'template', name: label }), expected, label);
+  }
+  await writeFile(file, ' '.repeat(MAX_TEMPLATE_DESIGN_BYTES + 1));
+  await assert.rejects(f.run('ppt_template_prepare', { project_path: 'template', name: 'Too large' }), /64 KiB/);
+  assert.throws(() => parseTemplateDesign(Buffer.from([0xff, 0xfe])), /UTF-8 JSON/);
+  assert.deepEqual(await readdir(path.join(f.service.store.personalTemplates.root, 'drafts')), [], 'Invalid guidance never publishes a draft');
+});
+
+test('old saved templates without guidance reuse geometric profiles while bad guidance stays isolated', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Existing saved template' });
+  const review = await f.request('template/authoring-state');
+  const saved = await f.request('template/authoring-save', { ...review, name: 'Existing saved template' });
+  const library = f.service.store.personalTemplates;
+  const guide = path.join(await library.projectSource(saved.templateId), 'template-design.json');
+  await rm(guide);
+  assert.equal(await library.readDesign(saved.templateId), undefined);
+  await f.request('template/select', { templateId: saved.templateId, mode: 'ppt' }, 'session-b');
+  const reference = await f.run('ppt_get_template_reference', { template_id: saved.templateId }, 'session-b');
+  assert.match(reference.designProfile, /未保存作者设计规范/);
+  assert.match(reference.designProfile, /几何推断/);
+  const copied = await f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'legacy-reuse' }, 'session-b');
+  assert.equal(copied.designPath, undefined);
+  assert.match(await readFile(path.join(f.workspace, 'legacy-reuse/pages/data.page'), 'utf8'), /示例数据 42/);
+  const oldPages = await f.run('ppt_get_template_pages', { template_id: saved.templateId, slide_numbers: [2] }, 'session-b');
+  assert.equal(oldPages[0].sourceTitle, '模板第 2 页');
+  assert.match(oldPages[0].structureSummary, /几何推断/);
+  await writeFile(guide, '{bad');
+  assert((await f.request('state')).templates.some(template => template.id === saved.templateId), 'Malformed guidance does not hide catalog records');
+  assert.equal((await f.request('state')).templates.filter(template => template.origin !== 'personal').length, 16);
+  await assert.rejects(library.readDesign(saved.templateId), /template-design.json 无效/);
+  await assert.rejects(f.run('ppt_get_template_reference', { template_id: saved.templateId }, 'session-b'), /template-design.json 无效/);
+  await assert.rejects(f.run('ppt_get_template_pages', { template_id: saved.templateId }, 'session-b'), /template-design.json 无效/);
+  await assert.rejects(f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'bad-reuse' }, 'session-b'), /template-design.json 无效/);
+  await f.request('template/select', { templateId: 'dsh-blue-professional', mode: 'ppt' }, 'session-c');
+  assert((await f.run('ppt_get_template_pages', { template_id: 'dsh-blue-professional' }, 'session-c')).length > 0);
+});
+
+test('model template preview attaches the actual reviewed Office PNG with matching page labels and revision guards', { timeout: 180000 }, async t => {
+  const received = [];
+  let afterImage;
+  const f = await fixture(t, { attachments: { saveImage: async value => {
+    received.push(value);
+    const info = await sharp(value.data).metadata();
+    if (afterImage) await afterImage();
+    return { attachmentId: `preview-${received.length}`, mediaType: value.mediaType, bytes: value.data.length, width: info.width, height: info.height, name: value.name };
+  } } });
+  await f.project();
+  const prepared = await f.run('ppt_template_prepare', { project_path: 'template', name: 'Actual preview' });
+  const args = { workflow_id: prepared.workflowId, revision: prepared.revision, slide_numbers: [2, 1] };
+  const result = await f.run('ppt_template_preview', args);
+  assert.equal(result.workflowId, prepared.workflowId);
+  assert.equal(result.revision, prepared.revision);
+  assert.deepEqual(result.pages.map(page => page.slideNumber), [2, 1]);
+  assert.equal(received.length, 2);
+  const review = await f.request('template/authoring-state');
+  for (const [index, page] of result.pages.entries()) {
+    assert.equal(page.image.width, 1920);
+    assert.equal(page.image.height, 1080);
+    const preview = await f.request('template/authoring-preview', { ...review, page: page.slideNumber });
+    assert.deepEqual(received[index].data, Buffer.from(preview.preview.split(',')[1], 'base64'), 'The model receives the same immutable Office rendering as the user');
+    assert.match(received[index].name, new RegExp(`r${prepared.revision}-page-${page.slideNumber}\\.png$`));
+  }
+  const rendered = f.tools.get('ppt_template_preview').output.render(args, result);
+  assert.match(rendered[0].text, /第 2 页/);
+  assert.equal(rendered[1].type, 'image');
+  assert.equal(rendered[1].attachment.attachmentId, 'preview-1');
+  assert.match(rendered[2].text, /第 1 页/);
+  assert.equal(rendered[3].attachment.attachmentId, 'preview-2');
+  for (const slide_numbers of [[], [1, 1], [0], [3], [1, 2, 1, 2, 1]])
+    await assert.rejects(f.run('ppt_template_preview', { ...args, slide_numbers }), /1–4/);
+  await assert.rejects(f.run('ppt_template_preview', { ...args, revision: prepared.revision - 1 }), /版本已更新/);
+  await assert.rejects(f.run('ppt_template_preview', args, 'session-b'), /先调用 ppt_template_prepare/);
+  assert.equal(received.length, 2, 'Invalid, stale and cross-session requests cannot produce image attachments');
+  const previewBefore = received[0].data;
+  await writeFile(path.join(f.workspace, 'template/pages/data.page'), 'Live project changed after prepare');
+  const immutable = await f.run('ppt_template_preview', { ...args, slide_numbers: [2] });
+  assert.equal(immutable.pages[0].slideNumber, 2);
+  assert.deepEqual(received.at(-1).data, previewBefore);
+  afterImage = () => f.run('ppt_template_cancel', { workflow_id: args.workflow_id });
+  await assert.rejects(f.run('ppt_template_preview', { ...args, slide_numbers: [1] }), /版本已更新/);
+});
+
+test('model preview reports a missing image service without claiming visual inspection', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  const prepared = await f.run('ppt_template_prepare', { project_path: 'template', name: 'User review' });
+  await assert.rejects(f.run('ppt_template_preview', { workflow_id: prepared.workflowId, revision: prepared.revision, slide_numbers: [1] }), /没有图片附件服务.*预览卡/);
+  assert.equal((await f.request('template/authoring-state')).phase, 'review', 'A missing attachment service leaves the user preview available');
+});
+
+test('save revalidates optional draft guidance before admitting a duplicate or new record', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Original design' });
+  const original = await f.request('template/authoring-state');
+  await f.request('template/authoring-save', { ...original, name: 'Original design' });
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Duplicate review' });
+  const duplicate = await f.request('template/authoring-state');
+  assert.equal(duplicate.templateId, original.templateId);
+  const guide = path.join(f.service.store.personalTemplates.root, 'drafts', duplicate.draftId, 'project/template-design.json');
+  const bytes = await readFile(guide);
+  await writeFile(guide, JSON.stringify({ ...designSpec(), layouts: [designSpec().layouts[0]] }));
+  await assert.rejects(f.request('template/authoring-save', { ...duplicate, name: 'Invalid review' }), /一一对应/);
+  assert.equal((await f.request('template/authoring-state')).phase, 'review');
+  assert.equal((await f.service.store.personalTemplates.readRecord(original.templateId)).name, 'Original design');
+  await writeFile(guide, bytes);
+  const saved = await f.request('template/authoring-save', { ...duplicate, name: 'Duplicate review' });
+  assert.equal(saved.templateId, original.templateId);
 });

@@ -1,8 +1,16 @@
 diff --git a/lib/personal-templates.js b/lib/personal-templates.js
-index 1a126d4..c6944cb 100644
+index 1a126d4..8618e6a 100644
 --- a/lib/personal-templates.js
 +++ b/lib/personal-templates.js
-@@ -59,7 +59,9 @@ function conversionError(check, fileName, sha256) {
+@@ -9,6 +9,7 @@ import { prepareOfficeFontAccess } from './office-font-access.js';
+ import { extractPersonalTemplateProfile, personalTemplateSourceTheme, validPersonalTemplateProfile, PERSONAL_TEMPLATE_PROFILE_VERSION } from './personal-template-profile.js';
+ import { createPersonalTemplateSamples, validPersonalTemplateSamples } from './personal-template-samples.js';
+ import { PersonalTemplateUploads, personalTemplateFileName, decodeTemplateBase64 } from './personal-template-upload.js';
++import { readTemplateDesign } from './template-design.js';
+ 
+ export const PERSONAL_TEMPLATE_CONVERSION_VERSION = 10;
+ export const PERSONAL_TEMPLATE_PREVIEW_VERSION = 11;
+@@ -59,7 +60,9 @@ function conversionError(check, fileName, sha256) {
  /** One library per host-owned Desktop profile; caller-supplied paths never select a library. */
  export class PersonalTemplateLibrary {
    tail = Promise.resolve();
@@ -12,7 +20,7 @@ index 1a126d4..c6944cb 100644
    fontAccess;
    constructor(store, convert, writeSource, maxSlides = MAX_PERSONAL_TEMPLATE_SLIDES) {
      this.store = store;
-@@ -74,6 +76,11 @@ export class PersonalTemplateLibrary {
+@@ -74,6 +77,11 @@ export class PersonalTemplateLibrary {
      this.tail = pending;
      return pending;
    }
@@ -24,7 +32,7 @@ index 1a126d4..c6944cb 100644
    async directory(...parts) {
      await mkdir(this.store.root, { recursive: true, mode: 0o700 });
      const target = path.join(this.root, ...parts);
-@@ -97,43 +104,71 @@ export class PersonalTemplateLibrary {
+@@ -97,43 +105,72 @@ export class PersonalTemplateLibrary {
    }
    async readRecord(id) {
      if (!ID.test(id)) throw new Error('个人模板标识无效');
@@ -54,6 +62,7 @@ index 1a126d4..c6944cb 100644
 +      const project = await this.#loadOwnedProject(path.join(directory, 'project'));
 +      if (project.pages.length !== record.pageIndex.length || project.pages.some((page, index) => page.file !== record.pageIndex[index].file))
 +        throw new Error('模板工程与页面索引不一致');
++      if (validateProject) await readTemplateDesign(path.join(directory, 'project'), project.pages);
 +      if (invalidProfile) {
 +        const profile = extractPersonalTemplateProfile(project);
 +        if (!validPersonalTemplateProfile(profile, record.pageIndex)) throw new Error('模板结构索引生成失败，请检查模板工程');
@@ -106,7 +115,7 @@ index 1a126d4..c6944cb 100644
          id: randomUUID(), operation, actor: 'user', status: 'failed', startedAt,
          completedAt: new Date().toISOString(), error: error.message
        }, error.conversion ? { conversion: error.conversion } : {});
-@@ -221,13 +256,15 @@ export class PersonalTemplateLibrary {
+@@ -221,13 +258,15 @@ export class PersonalTemplateLibrary {
          if (bytes.length < 4 || !bytes.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4])))
            throw new Error('请选择有效的 PPTX 文件');
          const id = `personal-${hash(bytes)}`;
@@ -124,7 +133,7 @@ index 1a126d4..c6944cb 100644
            const directory=path.join(this.root,'saved',id),temporary=path.join(directory,`profile-${randomUUID()}.json`);
            try {await writeFile(temporary,JSON.stringify(template),{flag:'wx',mode:0o600});await rename(temporary,await this.checkedFile(directory,'template.json'));}
            finally {await rm(temporary,{force:true});}
-@@ -256,6 +293,7 @@ export class PersonalTemplateLibrary {
+@@ -256,6 +295,7 @@ export class PersonalTemplateLibrary {
          const checked = checkPptdProject(original);
          if (checked.status === 'fail') throw conversionError(checked, fileName, hash(bytes));
          const templateProfile=extractPersonalTemplateProfile(original);
@@ -132,13 +141,14 @@ index 1a126d4..c6944cb 100644
          const {source:sampleSource,samples:templateSamples}=createPersonalTemplateSamples(original,templateProfile);
          const source=personalTemplateSourceTheme(sampleSource,templateProfile);
          const parsed = parsePptdProject(source);
-@@ -349,27 +387,42 @@ export class PersonalTemplateLibrary {
+@@ -349,27 +389,42 @@ export class PersonalTemplateLibrary {
      name = nameOf(name);
      return this.locked(() => this.audit(sessionId, 'save-personal-template', async () => {
        const directory = await this.draft(sessionId, draftId);
 -      const record = JSON.parse(await readFile(await this.checkedFile(directory, 'template.json'), 'utf8'));
 +      let record = JSON.parse(await readFile(await this.checkedFile(directory, 'template.json'), 'utf8'));
        if (!ID.test(record.id)) throw new Error('模板标识无效');
++      record = await this.#readDirectoryRecord(directory, record.id, true);
        const templates=await this.list();
        const duplicate = templates.find(item => item.id === record.id);
 -      if (duplicate?.conversionVersion === record.conversionVersion && duplicate?.previewVersion === record.previewVersion) { await rm(directory, { recursive: true }); return duplicate; }
@@ -150,7 +160,6 @@ index 1a126d4..c6944cb 100644
        if (!duplicate && templates.length >= MAX_TEMPLATES) throw new Error('个人模板库最多保存 100 套模板');
 -      const project = await loadPptdProject(path.join(directory, 'project'));
 -      if (checkPptdProject(project).status === 'fail') throw new Error('请重新上传完整的模板文件');
-+      record = await this.#readDirectoryRecord(directory, record.id, true);
        const next = { ...record, ...(duplicate ? {createdAt:duplicate.createdAt,description:duplicate.description} : {}), name, previewTitle: name };
        await writeFile(path.join(directory, 'template.json'), JSON.stringify(next), { mode: 0o600 });
 +      await writeFile(path.join(directory, 'owner.json'), JSON.stringify({ session: hash(sessionId), draftId }), { mode: 0o600 });
@@ -181,7 +190,7 @@ index 1a126d4..c6944cb 100644
    async cancel(sessionId, draftId) {
      return this.locked(() => this.audit(sessionId, 'cancel-personal-template', async () => {
        await rm(await this.draft(sessionId, draftId), { recursive: true });
-@@ -399,13 +452,11 @@ export class PersonalTemplateLibrary {
+@@ -399,13 +454,11 @@ export class PersonalTemplateLibrary {
        await this.readRecord(id);
        const directory = path.join(this.root, 'saved', id);
        const trash = path.join(await this.directory('trash'), `${id}-${randomUUID()}`);
@@ -197,7 +206,7 @@ index 1a126d4..c6944cb 100644
      // Walk before reading or copying; saved image paths remain confined to this project.
      const inspect = async current => {
        for (const item of await readdir(current, { withFileTypes: true })) {
-@@ -416,8 +467,18 @@ export class PersonalTemplateLibrary {
+@@ -416,8 +469,26 @@ export class PersonalTemplateLibrary {
      };
      if ((await lstat(directory)).isSymbolicLink()) throw new Error('模板工程目录无效');
      await inspect(directory);
@@ -214,6 +223,14 @@ index 1a126d4..c6944cb 100644
 +      const directory = path.join(this.root, 'saved', id);
 +      await this.#readDirectoryRecord(directory, id, true);
 +      return path.join(directory, 'project');
++    });
++  }
++  async readDesign(id) {
++    if (!ID.test(id)) throw new Error('个人模板标识无效');
++    return this.catalogLocked(async () => {
++      const directory = path.join(this.root, 'saved', id);
++      const record = await this.#readDirectoryRecord(directory, id, true);
++      return (await readTemplateDesign(path.join(directory, 'project'), record.pageIndex))?.design;
 +    });
    }
    async copyProject(id, output) {

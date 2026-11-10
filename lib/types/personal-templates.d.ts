@@ -4,6 +4,7 @@ import type { convertPptxToPptd } from './pptd-convert.js';
 import type { writePptdProjectSource } from './pptd-publish.js';
 import type { PersonalTemplateImportProgress } from './personal-template-import.js';
 import type { PersonalTemplateUploadInput, PersonalTemplateUploadChunk, PersonalTemplateUploads } from './personal-template-upload.js';
+import type { TemplateDesign } from './template-design.js';
 
 export declare const PERSONAL_TEMPLATE_CONVERSION_VERSION = 10;
 export declare const PERSONAL_TEMPLATE_PREVIEW_VERSION = 11;
@@ -40,6 +41,7 @@ export declare class PersonalTemplateLibrary {
     directory(...parts: string[]): Promise<string>;
     checkedFile(directory: string, file: string): Promise<string>;
     readRecord(id: string): Promise<PersonalTemplateRecord>;
+    readDesign(id: string): Promise<TemplateDesign | undefined>;
     savedDraft(sessionId: string, draftId: string, id: string): Promise<PersonalTemplateRecord>;
     catalogLocked<T>(work: () => Promise<T>): Promise<T>;
     list(): Promise<PersonalTemplateRecord[]>;

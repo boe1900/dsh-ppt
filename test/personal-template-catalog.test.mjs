@@ -79,6 +79,9 @@ test('saving within the library queue does not reacquire its catalog lock', { ti
   await mkdir(directory, { recursive: true });
   await writeFile(path.join(directory, 'template.json'), JSON.stringify(saved.record));
   await writeFile(path.join(directory, 'owner.json'), JSON.stringify({ session: createHash('sha256').update('session-a').digest('hex') }));
+  await mkdir(path.join(directory, 'project/pages'), { recursive: true });
+  await writeFile(path.join(directory, 'project/deck.pptd'), 'version: v2\nsize: [960, 540]\npages: [pages/cover.page]\n');
+  await writeFile(path.join(directory, 'project/pages/cover.page'), JSON.stringify({ elements: [] }));
   assert.deepEqual(await library.save('session-a', draftId, 'Already saved'), saved.record);
 });
 
