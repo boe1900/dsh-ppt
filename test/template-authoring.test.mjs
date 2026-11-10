@@ -144,7 +144,7 @@ test('new user revisions invalidate reviewed snapshots and cancellation prevents
   await f.run('ppt_template_prepare', { project_path: 'template', name: 'Initial' });
   const review = await f.request('template/authoring-state');
   f.user('Make it green');
-  await f.step();
+  await f.step(2);
   const creating = await f.request('template/authoring-state');
   assert.equal(creating.phase, 'creating'); assert.equal(creating.projectPath, 'template');
   assert(creating.revision > review.revision);
