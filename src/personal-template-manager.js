@@ -250,41 +250,84 @@ function TemplateAuthoringPanel({ client, authoring, operation, running, save, e
   }, [viewer]);
   const previewContent = () => preview.kind === 'ready'
     ? h(FitPreviewImage, { src: preview.src, alt: `${t('personal.preview')} ${page}`, zoom, onZoom: setZoom, onError: () => setPreview({ kind: 'error', message: t('personal.previewFailed') }) })
-    : preview.kind === 'error' ? h('div', { role: 'alert' }, h('p', null, preview.message), h('button', { type: 'button', onClick: () => setRetry(value => value + 1) }, t('templates.retry')))
+    : preview.kind === 'error' ? h('div', { role: 'alert' }, h('p', null, preview.message), h('button', { type: 'button', className: 'dsh-ppt-authoring-button', onClick: () => setRetry(value => value + 1) }, t('templates.retry')))
     : h('p', { role: 'status' }, t('personal.processing'));
-  return h('section', { className: 'dsh-ppt-authoring', 'data-template-authoring': authoring.phase, 'aria-labelledby': titleId },
-    h('style', null, TEMPLATE_VIEWER_CSS + AUTHORING_CSS),
-    h('header', null, h('strong', { id: titleId }, t('authoring.title')), h('button', { type: 'button', disabled: busy, onClick: exit }, t('authoring.exit'))),
-    operation.kind === 'error' && h('p', { role: 'alert' }, operation.message),
-    h('div', { className: 'dsh-ppt-authoring-review' },
-      h('button', { type: 'button', className: 'dsh-ppt-authoring-thumbnail', onClick: () => setViewer(true), 'aria-label': t('authoring.preview') },
-        preview.kind === 'ready' ? h('img', { src: preview.src, alt: `${t('personal.preview')} ${page}` }) : h('span', null, t('authoring.preview'))),
-      h('div', null, h('p', null, t('authoring.review').replace('{count}', authoring.slideCount)),
-        h('button', { type: 'button', onClick: () => setViewer(true) }, t('authoring.preview')), h('small', null, t('authoring.revise')))),
-    h('form', { onSubmit: event => { event.preventDefault(); if (preview.kind === 'ready' && !running && name.trim()) save(name); } },
-      h('label', null, t('personal.name'), h('input', { value: name, maxLength: 80, required: true, disabled: busy || running, onChange: event => setName(event.target.value) })),
-      h('button', { type: 'submit', disabled: busy || running || preview.kind !== 'ready' || !name.trim() }, t('authoring.save'))),
-    preview.kind === 'error' && previewContent(),
-    viewer && h('dialog', { ref: dialog, className: 'ppt-template-viewer', 'aria-label': t('authoring.preview'),
-      onCancel: event => { event.preventDefault(); setViewer(false); }, onKeyDown: event => {
-        if (event.key === 'ArrowLeft' && page > 1) { event.preventDefault(); setPage(value => value - 1); }
-        if (event.key === 'ArrowRight' && page < authoring.slideCount) { event.preventDefault(); setPage(value => value + 1); }
-        if (event.key === 'Tab') {
-          const fields = [...event.currentTarget.querySelectorAll('button:not(:disabled)')];
-          if (event.shiftKey && document.activeElement === fields[0]) { event.preventDefault(); fields.at(-1)?.focus(); }
-          else if (!event.shiftKey && document.activeElement === fields.at(-1)) { event.preventDefault(); fields[0]?.focus(); }
-        }
-      } },
-      h('header', null, h('h2', null, authoring.name), h('button', { type: 'button', 'aria-label': t('personal.close'), onClick: () => setViewer(false) }, '×')),
-      h('div', { className: 'ppt-template-stage' }, previewContent()),
-      h('footer', null,
-        h('button', { type: 'button', disabled: page <= 1, 'aria-label': t('personal.previous'), onClick: () => { setPage(value => value - 1); setZoom(1); } }, '‹'),
-        h('span', null, `${page} / ${authoring.slideCount}`),
-        h('button', { type: 'button', disabled: page >= authoring.slideCount, 'aria-label': t('personal.next'), onClick: () => { setPage(value => value + 1); setZoom(1); } }, '›'),
-        h('span', null, t('authoring.revise')))));
+  return h('div', { className: 'dsh-ppt-authoring-frame' },
+    h('section', { className: 'dsh-ppt-authoring', 'data-template-authoring': authoring.phase, 'aria-labelledby': titleId },
+      h('style', null, TEMPLATE_VIEWER_CSS + AUTHORING_CSS),
+      h('header', { className: 'dsh-ppt-authoring-header' },
+        h('h2', { className: 'dsh-ppt-authoring-title', id: titleId }, t('authoring.title')),
+        h('button', { type: 'button', className: 'dsh-ppt-authoring-button dsh-ppt-authoring-exit', disabled: busy, onClick: exit }, t('authoring.exit'))),
+      h('div', { className: 'dsh-ppt-authoring-body' },
+        operation.kind === 'error' && h('p', { className: 'dsh-ppt-authoring-notice', role: 'alert' }, operation.message),
+        h('div', { className: 'dsh-ppt-authoring-review' },
+          h('button', { type: 'button', className: 'dsh-ppt-authoring-thumbnail', onClick: () => setViewer(true), 'aria-label': t('authoring.preview') },
+            preview.kind === 'ready' ? h('img', { src: preview.src, alt: `${t('personal.preview')} ${page}` }) : h('span', null, t('authoring.preview'))),
+          h('div', { className: 'dsh-ppt-authoring-copy' },
+            h('p', { className: 'dsh-ppt-authoring-summary' }, t('authoring.review').replace('{count}', authoring.slideCount)),
+            h('button', { type: 'button', className: 'dsh-ppt-authoring-button', onClick: () => setViewer(true) }, t('authoring.preview')),
+            h('small', { className: 'dsh-ppt-authoring-hint' }, t('authoring.revise')))),
+        preview.kind === 'error' && h('div', { className: 'dsh-ppt-authoring-notice' }, previewContent())),
+      h('form', { className: 'dsh-ppt-authoring-footer', onSubmit: event => { event.preventDefault(); if (preview.kind === 'ready' && !running && name.trim()) save(name); } },
+        h('label', { className: 'dsh-ppt-authoring-name' },
+          h('span', null, t('personal.name')),
+          h('input', { className: 'dsh-ppt-authoring-input', value: name, maxLength: 80, required: true, disabled: busy || running, onChange: event => setName(event.target.value) })),
+        h('button', { type: 'submit', className: 'dsh-ppt-authoring-button dsh-ppt-authoring-save', disabled: busy || running || preview.kind !== 'ready' || !name.trim() }, t('authoring.save'))),
+      viewer && h('dialog', { ref: dialog, className: 'ppt-template-viewer dsh-ppt-authoring-viewer', 'aria-label': t('authoring.preview'),
+        onCancel: event => { event.preventDefault(); setViewer(false); }, onKeyDown: event => {
+          if (event.key === 'ArrowLeft' && page > 1) { event.preventDefault(); setPage(value => value - 1); }
+          if (event.key === 'ArrowRight' && page < authoring.slideCount) { event.preventDefault(); setPage(value => value + 1); }
+          if (event.key === 'Tab') {
+            const fields = [...event.currentTarget.querySelectorAll('button:not(:disabled)')];
+            if (event.shiftKey && document.activeElement === fields[0]) { event.preventDefault(); fields.at(-1)?.focus(); }
+            else if (!event.shiftKey && document.activeElement === fields.at(-1)) { event.preventDefault(); fields[0]?.focus(); }
+          }
+        } },
+        h('header', null, h('h2', null, authoring.name), h('button', { type: 'button', 'aria-label': t('personal.close'), onClick: () => setViewer(false) }, '×')),
+        h('div', { className: 'ppt-template-stage' }, previewContent()),
+        h('footer', null,
+          h('button', { type: 'button', disabled: page <= 1, 'aria-label': t('personal.previous'), onClick: () => { setPage(value => value - 1); setZoom(1); } }, '‹'),
+          h('span', null, `${page} / ${authoring.slideCount}`),
+          h('button', { type: 'button', disabled: page >= authoring.slideCount, 'aria-label': t('personal.next'), onClick: () => { setPage(value => value + 1); setZoom(1); } }, '›'),
+          h('span', null, t('authoring.revise'))))));
 }
 const AUTHORING_CSS = `
-.dsh-ppt-authoring{box-sizing:border-box;align-self:center;width:calc(100% - 2 * var(--dsh-composer-side-clearance,16px));padding:12px 16px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:12px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222);font:13px/1.5 var(--font-sans,system-ui,sans-serif)}
-.dsh-ppt-authoring header,.dsh-ppt-authoring form,.dsh-ppt-authoring-review{display:flex;align-items:center;gap:12px}.dsh-ppt-authoring header{justify-content:space-between}.dsh-ppt-authoring p{margin:8px 0}.dsh-ppt-authoring small{display:block;color:var(--dsw-alias-label-secondary,#666)}.dsh-ppt-authoring button{border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ccc);border-radius:7px;padding:5px 10px;background:var(--dsw-alias-bg-base,#fff);color:inherit;font:inherit;cursor:pointer}.dsh-ppt-authoring button:disabled{opacity:.5;cursor:default}.dsh-ppt-authoring form{margin-top:12px;flex-wrap:wrap}.dsh-ppt-authoring label{display:flex;align-items:center;gap:8px;flex:1}.dsh-ppt-authoring input{min-width:80px;width:100%;padding:6px 10px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ccc);border-radius:7px;background:var(--dsw-alias-bg-base,#fff);color:inherit;font:inherit}.dsh-ppt-authoring form button{background:var(--dsw-alias-label-primary,#222);color:var(--dsw-alias-bg-base,#fff)}.dsh-ppt-authoring-review{margin-top:10px}.dsh-ppt-authoring .dsh-ppt-authoring-thumbnail{display:grid;place-items:center;flex:none;width:130px;aspect-ratio:16/9;padding:0;overflow:hidden}.dsh-ppt-authoring-thumbnail img{width:100%;height:100%;object-fit:contain}.dsh-ppt-authoring [role=alert]{color:var(--dsw-alias-state-error-primary,#b42318)}
-@media(max-width:500px){.dsh-ppt-authoring-review{align-items:flex-start}.dsh-ppt-authoring .dsh-ppt-authoring-thumbnail{width:90px}}
+.dsh-ppt-authoring-frame{container:dsh-ppt-authoring / inline-size;box-sizing:border-box;display:flex;justify-content:center;flex:none;min-width:0;width:100%;padding:6px calc(var(--dsh-composer-side-clearance,16px) + 16px) 10px}
+.dsh-ppt-authoring{box-sizing:border-box;display:flex;flex-direction:column;min-width:0;width:100%;max-width:var(--dsh-chat-content-width,920px);max-height:min(60vh,520px);padding:0;border:0;border-radius:var(--dsw-radius-xl,20px);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-base,#fff));box-shadow:var(--dsw-elevation-panel,0 2px 12px #00000014);color:var(--dsw-alias-label-primary,#222);font:inherit;font-size:14px;line-height:1.5;overflow:hidden;--dsw-elevation-stroke-color:var(--dsw-alias-border-l2-darkmode-thin,#ddd);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2,#ccc);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2,#aaa)}
+.dsh-ppt-authoring *{box-sizing:border-box}
+.dsh-ppt-authoring-header{display:flex;justify-content:space-between;align-items:flex-start;flex:none;gap:16px;padding:20px 16px 0 24px}
+.dsh-ppt-authoring-title{min-width:0;margin:0;font-size:16px;font-weight:500;line-height:22px;overflow-wrap:anywhere}
+.dsh-ppt-authoring-body{flex:1;min-height:0;padding:18px 24px;overflow-y:auto;overscroll-behavior:contain}
+.dsh-ppt-authoring-review{display:flex;align-items:center;gap:16px}
+.dsh-ppt-authoring-thumbnail{display:grid;place-items:center;flex:none;width:144px;aspect-ratio:16/9;padding:0;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-module-platform,#f5f5f5);color:var(--dsw-alias-label-secondary,#666);font:inherit;font-size:12px;cursor:pointer;overflow:hidden}
+.dsh-ppt-authoring-thumbnail img{display:block;width:100%;height:100%;object-fit:contain}
+.dsh-ppt-authoring-copy{display:flex;flex-direction:column;align-items:flex-start;flex:1;min-width:0;gap:8px}
+.dsh-ppt-authoring-summary{margin:0;font-size:14px;line-height:22px;overflow-wrap:anywhere}
+.dsh-ppt-authoring-hint{display:block;color:var(--dsw-alias-label-secondary,#666);font-size:12px;line-height:20px;overflow-wrap:anywhere}
+.dsh-ppt-authoring-button{display:inline-flex;justify-content:center;align-items:center;flex:none;min-height:32px;padding:5px 12px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:var(--dsw-radius-md,10px);background:transparent;color:inherit;font:inherit;font-size:13px;line-height:20px;white-space:nowrap;cursor:pointer;transition:background-color .12s,border-color .12s}
+.dsh-ppt-authoring-button:hover:not(:disabled),.dsh-ppt-authoring-thumbnail:hover:not(:disabled){border-color:var(--dsw-alias-border-l4,#aaa);background:var(--dsw-alias-interactive-bg-hover,#f1f2f4)}
+.dsh-ppt-authoring-exit{min-height:28px;margin-top:-3px;padding:3px 8px;border-color:transparent;color:var(--dsw-alias-label-secondary,#666);font-size:12px}
+.dsh-ppt-authoring-button:disabled{opacity:.4;cursor:default}
+.dsh-ppt-authoring-button:focus-visible,.dsh-ppt-authoring-thumbnail:focus-visible,.dsh-ppt-authoring-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#3569d4);outline-offset:2px}
+.dsh-ppt-authoring-footer{display:flex;align-items:center;flex:none;gap:12px;margin:0;padding:16px 24px 20px;border-top:1px solid var(--dsw-alias-border-l2-darkmode-thin,#e5e5e5)}
+.dsh-ppt-authoring-name{display:flex;align-items:center;flex:1;min-width:0;gap:12px;font-size:13px;line-height:20px}
+.dsh-ppt-authoring-name>span{flex:none;white-space:nowrap;font-weight:500}
+.dsh-ppt-authoring-input{flex:1;min-width:0;width:100%;height:36px;padding:7px 12px;border:1px solid var(--dsw-alias-border-l4,#ccc);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-module-platform,var(--dsw-alias-bg-base,#fff));color:inherit;caret-color:var(--dsw-alias-state-business-primary,#3569d4);font:inherit}
+.dsh-ppt-authoring-input:hover:not(:disabled){border-color:var(--dsw-alias-label-tertiary,#999)}
+.dsh-ppt-authoring-input:disabled{opacity:.5;cursor:default}
+.dsh-ppt-authoring-save{min-height:36px;padding:7px 16px;border-color:transparent;background:var(--dsw-alias-label-primary,#222);color:var(--dsw-alias-label-primary-foreground,var(--dsw-alias-bg-base,#fff));font-weight:500}
+.dsh-ppt-authoring-save:hover:not(:disabled){border-color:transparent;background:color-mix(in srgb,var(--dsw-alias-label-primary,#222) 88%,var(--dsw-alias-bg-base,#fff))}
+.dsh-ppt-authoring-notice{margin:0 0 12px;color:var(--dsw-alias-state-error-primary,#b42318);font-size:13px;line-height:20px;overflow-wrap:anywhere}
+.dsh-ppt-authoring-notice:last-child{margin:12px 0 0}
+.dsh-ppt-authoring-notice p{margin:0 0 8px}
+.dsh-ppt-authoring-viewer{width:min(var(--dsh-chat-content-width,920px),calc(100vw - 2 * (var(--dsh-composer-side-clearance,16px) + 16px)));height:min(760px,calc(100dvh - 64px));max-height:calc(100dvh - 64px);border:0;border-radius:var(--dsw-radius-xl,20px);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-base,#fff));box-shadow:var(--dsw-elevation-panel,0 2px 12px #00000014)}
+.dsh-ppt-authoring-viewer>header{align-items:center;gap:16px}
+.dsh-ppt-authoring-viewer>header h2{min-width:0;font-weight:500;line-height:22px}
+.dsh-ppt-authoring-viewer>footer{gap:12px}
+.dsh-ppt-authoring-viewer>footer>span:last-child{color:var(--dsw-alias-label-secondary,#666);font-size:12px;line-height:20px}
+.dsh-ppt-authoring-viewer button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,#f1f2f4)}
+@container dsh-ppt-authoring (max-width:656px){.dsh-ppt-authoring-header{padding:10px 12px 0 18px}.dsh-ppt-authoring-title{font-size:15px;line-height:21px}.dsh-ppt-authoring-body{padding:16px 18px}.dsh-ppt-authoring-footer{padding:16px 18px}.dsh-ppt-authoring-viewer{padding:16px}}
+@container dsh-ppt-authoring (max-width:536px){.dsh-ppt-authoring-footer{flex-direction:column;align-items:stretch}.dsh-ppt-authoring-name{flex:none}.dsh-ppt-authoring-save{width:100%}.dsh-ppt-authoring-review{align-items:flex-start}.dsh-ppt-authoring-thumbnail{width:104px}}
+@container dsh-ppt-authoring (max-width:296px){.dsh-ppt-authoring-review{flex-direction:column}.dsh-ppt-authoring-thumbnail{width:100%}}
+@media(prefers-reduced-motion:reduce){.dsh-ppt-authoring-button{transition:none}}
 `;

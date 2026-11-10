@@ -374,7 +374,8 @@ test('review previews every page, blocks save while running, and saves without c
   ui.state.selectedTemplateId = definitions[0].id;
   ui.state.templateAuthoring = { phase: 'review', workflowId: 'workflow-one', revision: 3, draftId: 'draft-one', slideCount: 2, name: 'Weekly report', guideSent: true };
   await ui.startConversation(); await ui.reload();
-  assert.equal(ui.doc.querySelector('[data-template-authoring=review] strong').textContent, 'Template preview');
+  const review = ui.doc.querySelector('[data-template-authoring=review]');
+  assert.equal(ui.doc.getElementById(review.getAttribute('aria-labelledby')).textContent, 'Template preview');
   assert.match(ui.doc.querySelector('[data-template-authoring]').textContent, /2 template pages/);
   assert.match(ui.doc.querySelector('[data-template-authoring]').textContent, /tell AI what to change in the conversation/);
   await ui.until(() => ui.doc.querySelector('.dsh-ppt-authoring-thumbnail img'));
