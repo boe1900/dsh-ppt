@@ -161,10 +161,14 @@ window.__ModuleLoader__.load({
 					error: ""
 				}));
 			}
+            setAuthoring(sessionId, templateAuthoring) {
+                this.update(sessionId, current => ({ ...current, templateAuthoring: templateAuthoring ?? undefined }));
+            }
 			setTemplateState(sessionId, next) {
 				this.update(sessionId, current => ({
 					...current,
 					templates: next.templates,
+                    templateAuthoring: next.templateAuthoring,
 					selectedId: next.templates.some(template => template.id === next.selectedTemplateId) ? next.selectedTemplateId : null,
 					activeMode: next.presentationMode ?? current.activeMode,
 					notice: next.templateMigration?.reason ?? null,
@@ -421,22 +425,9 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** Template picker shown only for the native PPT agent preset. */
-		function OfficePptChooser({ client, mode, sessionId, t }) {
+		function OfficePptChooser({ client, mode, sessionId, startAuthoring, t }) {
 			const state = useMode(mode, sessionId);
 			const [category, setCategory] = react.useState("all");
-			const [loadAttempt, setLoadAttempt] = react.useState(0);
-			const timeoutMessage = t("templates.loadTimeout");
-
-			react.useEffect(() => {
-				let active = true;
-				mode.setLoading(sessionId, true);
-				loadTemplateState(client, timeoutMessage).then(next => {
-					if (active) mode.setTemplateState(sessionId, next);
-				}).catch(reason => {
-					if (active) mode.setError(sessionId, reason instanceof Error ? reason.message : String(reason));
-				});
-				return () => { active = false; };
-			}, [client, mode, sessionId, loadAttempt, timeoutMessage]);
 
 			const choose = async template => {
 				if (state.loading || template.id === state.selectedId) return;
@@ -469,24 +460,91 @@ window.__ModuleLoader__.load({
 						}, t(`templates.category.${item}`)))),
 					h("div", { className: OfficePptHero_module_css_default.templateViewport, "data-office-ppt-template-viewport": "", "data-native-wheel-owner": "", "aria-busy": state.loading },
 						state.error && h("div", { className: OfficePptHero_module_css_default.templateError, role: "alert" }, state.error,
-							h("button", { type: "button", className: OfficePptHero_module_css_default.retryButton, onClick: () => setLoadAttempt(attempt => attempt + 1) }, t("templates.retry"))),
+							h("button", { type: "button", className: OfficePptHero_module_css_default.retryButton, onClick: () => {
+                                    mode.setLoading(sessionId, true);
+                                    loadTemplateState(client, t("templates.loadTimeout")).then(next => mode.setTemplateState(sessionId, next)).catch(error => mode.setError(sessionId, error.message));
+                                } }, t("templates.retry"))),
 						state.loading && templates.length === 0 ? h("div", { className: OfficePptHero_module_css_default.panelState }, t("status.loading")) :
 						category === "all" || category === "personal" ? h(PersonalTemplateManager, {
-							key: sessionId, client, mode, sessionId, state, choose, t, mutable: client.bound === true,
+							key: sessionId, client, mode, sessionId, state, choose, startAuthoring, t, mutable: client.bound === true,
 							builtInCards: category === "all" ? builtInCards : []
 						}) : h("div", { className: OfficePptHero_module_css_default.templateGrid }, builtInCards)));
 		}
-		function OfficePptComposer(props) {
-			const blank = props.useSession(current => current.blank);
-			const agentPreset = props.useSessions(current => {
-				const summary = current.byId[props.sessionId];
-				return summary?.projectionValues?.agentPreset ?? summary?.agentPreset;
-			});
-			if (!blank || agentPreset !== "ppt") return null;
-			return react_jsx_runtime.jsx(OfficePptChooser, {
-				client: props.client, mode: props.mode, sessionId: props.sessionId, t: props.t
-			}, props.sessionId);
-		}
+        function PptSessionComposer(props) {
+            const state = useMode(props.mode, props.sessionId);
+            const blank = props.useSession(current => current.blank);
+            const running = props.useSession(current => current.running || (current.pendingSubmissions?.length ?? 0) > 0);
+            const [operation, setOperation] = react.useState({ kind: "idle" });
+            const alive = react.useRef(true);
+            const request = react.useRef(0);
+            const refresh = async () => {
+                const token = ++request.current;
+                const next = await loadTemplateState(props.client, props.t("templates.loadTimeout"));
+                if (alive.current && request.current === token) props.mode.setTemplateState(props.sessionId, next);
+                return next;
+            };
+            react.useEffect(() => {
+                alive.current = true;
+                props.mode.setLoading(props.sessionId, true);
+                refresh().catch(error => { if (alive.current) props.mode.setError(props.sessionId, error.message); });
+                return () => { alive.current = false; request.current++; };
+            }, [props.client, props.sessionId]);
+            const authoring = state.templateAuthoring;
+            react.useEffect(() => {
+                if (!authoring || authoring.phase === "saved") return;
+                let stopped = false, timer;
+                const poll = async () => {
+                    try {
+                        const token = ++request.current;
+                        const next = await props.client.call("template/authoring-state");
+                        if (!stopped && alive.current && request.current === token) props.mode.setAuthoring(props.sessionId, next);
+                    } catch (error) { if (!stopped && alive.current) setOperation({ kind: "error", message: error.message }); }
+                    if (!stopped) timer = setTimeout(poll, 1200);
+                };
+                timer = setTimeout(poll, 300);
+                return () => { stopped = true; clearTimeout(timer); };
+            }, [props.client, props.sessionId, authoring?.workflowId, authoring?.phase]);
+            const act = async work => {
+                if (operation.kind === "busy") return;
+                setOperation({ kind: "busy" });
+                try { await work(); if (alive.current) setOperation({ kind: "idle" }); }
+                catch (error) { if (alive.current) setOperation({ kind: "error", message: error.message }); }
+            };
+            const startAuthoring = () => act(async () => {
+                const workflow = await props.client.call("template/authoring-start");
+                await refresh();
+                if (!alive.current || workflow.guideSent) return;
+                await props.sendGuide(props.t("authoring.starter"));
+                await props.client.call("template/authoring-guided", { workflowId: workflow.workflowId });
+                await refresh();
+            });
+            if (authoring) return react.createElement(TemplateAuthoringPanel, {
+                key: props.sessionId, client: props.client, authoring, operation, running,
+                t: props.t, sendGuide: startAuthoring,
+                exit: () => act(async () => {
+                    await props.client.call("template/authoring-exit", { workflowId: authoring.workflowId });
+                    await refresh();
+                }),
+                save: name => act(async () => {
+                    await props.client.call("template/authoring-save", { workflowId: authoring.workflowId,
+                        revision: authoring.revision, draftId: authoring.draftId, name });
+                    await refresh();
+                })
+            });
+            return react.createElement(react.Fragment, null,
+                operation.kind === "error" && react.createElement("p", { role: "alert" }, operation.message),
+                blank && react.createElement(OfficePptChooser, { client: props.client, mode: props.mode,
+                    sessionId: props.sessionId, startAuthoring, t: props.t }));
+        }
+        function OfficePptComposer(props) {
+            const agentPreset = props.useSessions(current => {
+                const summary = current.byId[props.sessionId];
+                return summary?.projectionValues?.agentPreset ?? summary?.agentPreset;
+            });
+            if (agentPreset !== "ppt") return null;
+            return react.createElement(PptSessionComposer, props);
+        }
+
 		//#endregion
 		//#region ../office-ppt/src/client/locales.ts
 		/** Office PPT composer-mode dictionaries. */
@@ -511,6 +569,19 @@ window.__ModuleLoader__.load({
 			"personal.deletedSelection": "已选个人模板已被删除，请重新选择。",
 			"personal.upload": "上传 PPT 模板",
 			"personal.create": "新建自定义模板",
+            "authoring.entryHint": "描述想法，让 AI 帮你制作",
+            "authoring.title": "制作自定义模板",
+            "authoring.exit": "结束制作",
+            "authoring.intake": "在对话里告诉 AI 模板的用途、喜欢的风格和品牌要求。做好后会在这里显示预览。",
+            "authoring.example": "例如：蓝色商务周报，中文，16:9，包含封面、章节、图文和数据页。也可以在对话中附上参考 PPT。",
+            "authoring.starter": "请使用内置 dsh-ppt-template 技能，引导我制作一套可反复复用的自定义 PPT 模板。先简短询问用途、风格和品牌要求中尚不明确的信息；如果我已给出足够信息，就直接制作。完成后请生成模板预览，由我检查、修改并在面板里命名保存。",
+            "authoring.retryGuide": "继续 AI 模板引导",
+            "authoring.preview": "逐页预览",
+            "authoring.review": "已生成 {count} 页模板，检查预览后保存。",
+            "authoring.revise": "需要调整？直接在对话里告诉 AI，修改后会更新预览。",
+            "authoring.save": "保存到自定义模板",
+            "authoring.saved": "「{name}」已保存。新建 PPT 对话，在「自定义」分类选择使用。",
+
 			"personal.selected": "已选中",
 			"personal.local": "保存在当前配置 · PPTX",
 			"personal.fileType": "请选择 PPTX 文件",
@@ -615,6 +686,19 @@ window.__ModuleLoader__.load({
 			"personal.deletedSelection": "The selected personal template was deleted. Choose another template.",
 			"personal.upload": "Upload PPT template",
 			"personal.create": "Create custom template",
+            "authoring.entryHint": "Describe your idea to AI",
+            "authoring.title": "Create a reusable template",
+            "authoring.exit": "Finish authoring",
+            "authoring.intake": "Tell AI the purpose, visual style and branding in the conversation. Your template preview will appear here.",
+            "authoring.example": "For example: a blue weekly report, English, 16:9, with cover, section, image and data layouts. You can also attach a reference PPT in the conversation.",
+            "authoring.starter": "Use the bundled dsh-ppt-template skill to help me create a reusable custom PPT template. Briefly ask only for missing purpose, style and branding preferences; start creating if I have already provided enough detail. Prepare template previews for my review and revisions, then let me name and save the template in the panel.",
+            "authoring.retryGuide": "Continue the AI template guide",
+            "authoring.preview": "Preview all pages",
+            "authoring.review": "{count} template pages are ready. Review them before saving.",
+            "authoring.revise": "To revise, tell AI what to change in the conversation.",
+            "authoring.save": "Save to custom templates",
+            "authoring.saved": "“{name}” is saved. Start a new PPT conversation and select it from Custom.",
+
 			"personal.selected": "Selected",
 			"personal.local": "Saved in the current profile · PPTX",
 			"personal.fileType": "Choose a PPTX file",
@@ -727,7 +811,9 @@ window.__ModuleLoader__.load({
 		const standardInject = [
 			"slots",
 			"locale",
-			"connection"
+			"connection",
+            "sessions",
+            "conversation"
 		];
 		/** Build the session-scoped browser face shared by both Composer layouts. */
 		function officePptHeroInjection(ctx) {
@@ -737,10 +823,20 @@ window.__ModuleLoader__.load({
 			}), "dsh-ppt: dictionaries");
 			const connection = ctx.get("connection");
 			const mode = new OfficePptHeroStore();
-			return (sessionId) => ({
-				client: createOfficePptClient(connection.rpc, sessionId),
-				mode
-			});
+			return sessionId => {
+                const binding = ctx.sessions.binding(sessionId);
+                const scope = ctx.sessions.scope(sessionId);
+                return {
+                    client: createOfficePptClient(connection.rpc, sessionId), mode,
+                    sendGuide: async text => {
+                        if (!binding || ctx.sessions.binding(sessionId) !== binding || !scope)
+                            throw new Error("PPT session is no longer active");
+                        const conversation = scope.get("conversation");
+                        if (!conversation) throw new Error("Conversation service is unavailable");
+                        await conversation.send(text);
+                    }
+                };
+            };
 		}
 		/** Register the template picker below the composer for the native PPT preset. */
 		function applyStandard(ctx) {
@@ -749,7 +845,7 @@ window.__ModuleLoader__.load({
 			ctx.slots.inject(name, () => ctx.slots.register({
 				name, id: "dsh-ppt", order: 20, locale: NS, inject: injectHero
 			}, props => react_jsx_runtime.jsx(OfficePptComposer, {
-				client: props.client, mode: props.mode, sessionId: props.sessionId,
+				client: props.client, mode: props.mode, sessionId: props.sessionId, sendGuide: props.sendGuide,
 				useSession: props.useSession, useSessions: props.useSessions, t: props.t
 			}, props.sessionId)));
 		}

@@ -211,6 +211,7 @@ test('native PPT preset shows a one-time template picker below the composer', as
     effect: run => run(),
     locale: { register: (_name, value) => { dictionary = value.en; return () => {}; } },
     get: () => ({ rpc }),
+    sessions: { binding: () => undefined, scope: () => undefined },
     slots: { inject: (_name, callback) => callback(), register: (options, component) => {
       slots.register(options, component);
       seats.set(options.name, { options, component, injected: options.inject('ui-test') });

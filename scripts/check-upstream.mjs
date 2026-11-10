@@ -7,7 +7,7 @@ const checkout = process.argv[2];
 assert(checkout, 'Usage: node scripts/check-upstream.mjs /path/to/dsh-desktop');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const upstream = path.resolve(checkout, 'packages/ppt-runtime/core/lib');
-const adapters = new Set(['index.js', 'invariant.js', 'office-template-preview.js', 'client.js', 'catalog.js', 'preview-manifest.js', 'jsdom.js']);
+const adapters = new Set(['index.js', 'invariant.js', 'office-template-preview.js', 'client.js', 'catalog.js', 'preview-manifest.js', 'jsdom.js', 'authored-templates.js', 'template-authoring.js']);
 const runtimeFiles = names => names.filter(name => name.endsWith('.js') && !adapters.has(name) && name !== 'preset.js').sort();
 const files = runtimeFiles(await readdir(upstream));
 assert.deepEqual(runtimeFiles(await readdir(path.join(root, 'lib'))), files, 'Upstream runtime module list differs');

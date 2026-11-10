@@ -140,6 +140,7 @@ export type OfficePresentationMode = 'ppt';
 export type OfficeTemplateCategory = 'strategy' | 'business' | 'work' | 'promotion' | 'academic' | 'consulting' | 'finance' | 'custom' | 'personal';
 /** Selectable presentation theme, page references, and model-facing visual guidance. */
 export interface OfficeTemplate {
+    readonly authoringKind?: 'native-pptd';
     readonly templateSamples?: import('./personal-template-samples.js').PersonalTemplateSamples;
     readonly templateProfile?: import('./personal-template-profile.js').PersonalTemplateProfile;
     readonly id: OfficeTemplateId;
@@ -462,10 +463,22 @@ export interface OfficeDeckPreview {
         readonly bullets: readonly string[];
     }[];
 }
+/** Persisted conversational template authoring with an immutable reviewed revision. */
+export type TemplateAuthoringState = {
+    readonly workflowId: string;
+    readonly revision: number;
+    readonly guideSent: boolean;
+    readonly turnId?: string;
+} & (
+    | { readonly phase: 'creating'; readonly projectPath?: string; readonly name?: string }
+    | { readonly phase: 'review'; readonly projectPath: string; readonly name: string; readonly draftId: string; readonly templateId: string; readonly slideCount: number }
+    | { readonly phase: 'saved'; readonly templateId: string; readonly name: string }
+);
 /** Session-local state rendered by the PPT view. */
 export interface OfficePptState {
     readonly sessionId: SessionId;
     readonly templates: readonly OfficeTemplate[];
+    readonly templateAuthoring?: TemplateAuthoringState;
     /** Active composer workflow. It is model context, never visible draft text. */
     readonly presentationMode?: OfficePresentationMode;
     readonly documentMode?: 'word' | 'excel';

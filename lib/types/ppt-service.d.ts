@@ -18,6 +18,7 @@ export declare class PptError extends Error {
 }
 /** Complete local workflow for the Kimi composer, browser state, and model tools. */
 export declare class PptService {
+    readonly templateAuthoring: import('./template-authoring.js').TemplateAuthoring;
     private readonly store;
     private readonly limits;
     private readonly locks;
