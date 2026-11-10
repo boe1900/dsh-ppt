@@ -158,6 +158,7 @@ test('an existing project prepares, previews and saves without the template entr
   }
   const saved = await f.request('template/authoring-save', { ...review, name: 'Named by the user' });
   assert.equal(saved.phase, 'saved');
+  await f.request('template/select', { templateId: saved.templateId, mode: 'ppt' }, 'session-b');
   await f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'reused' }, 'session-b');
   assert.deepEqual(await readFile(path.join(f.workspace, 'reused/pages/data.page')), await readFile(path.join(f.workspace, 'template/pages/data.page')));
   await f.project('another-template');
@@ -166,8 +167,33 @@ test('an existing project prepares, previews and saves without the template entr
   assert.equal(next.phase, 'review');
   assert.notEqual(next.workflowId, saved.workflowId, 'A saved workflow admits a new template without the entry button');
   await assert.rejects(f.request('template/authoring-save', { ...review, name: 'Old preview' }), /版本已更新/);
+  await f.request('template/authoring-exit', { workflowId: saved.workflowId });
+  assert.equal((await f.request('template/authoring-state')).workflowId, next.workflowId, 'A stale exit cannot cancel the newly admitted workflow');
   const record = (await f.request('state')).templates.find(item => item.id === saved.templateId);
   assert.equal(record.name, 'Named by the user', 'Preparing another template preserves the saved template');
+});
+
+test('cancelled direct prepares do not admit or publish review', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  const controller = new AbortController();
+  controller.abort();
+  const execute = signal => f.tools.get('ppt_template_prepare').execute({ project_path: 'template', name: 'Cancelled' }, {
+    agent: f.agentFor('session-a'), signal,
+  });
+  await assert.rejects(execute(controller.signal), /abort/i);
+  assert.equal(await f.request('template/authoring-state'), null, 'A previously cancelled call must not begin template authoring');
+
+  const active = new AbortController();
+  const library = f.service.store.personalTemplates, native = library.prepareAuthored.bind(library);
+  library.prepareAuthored = async (...args) => {
+    const prepared = await native(...args);
+    active.abort();
+    return prepared;
+  };
+  await assert.rejects(execute(active.signal), /abort/i);
+  assert.equal((await f.request('template/authoring-state')).phase, 'creating');
+  assert.deepEqual(await readdir(path.join(f.scratch, 'storage/personal-templates/drafts')), [], 'Cancellation before publication discards the snapshot');
 });
 
 test('new user revisions invalidate reviewed snapshots and cancellation prevents late publication', { timeout: 180000 }, async t => {

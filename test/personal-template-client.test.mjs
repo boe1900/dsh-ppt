@@ -194,21 +194,106 @@ test('a creating workflow does not add controls when polling fails', async t => 
   assert.equal(ui.sent.length, 0);
 });
 
-test('polling failures keep an in-flight template guide free of recovery controls', async t => {
-  let release, polls = 0;
+test('late polling and completion-read failures keep an in-flight template guide free of recovery controls', async t => {
+  let release, rejectPoll, failState = false;
   const ui = await fixture(t, {
     send: () => new Promise(resolve => { release = resolve; }),
-    'template/authoring-state': () => { polls++; throw new Error('Status unavailable'); },
+    state: (_payload, state) => { if (failState) throw new Error('State unavailable'); return { ...state }; },
+    'template/authoring-state': () => new Promise((_resolve, reject) => { rejectPoll = reject; }),
   });
   t.after(() => release?.());
-  await ui.click(ui.doc.querySelector('.personal-create'));
-  await ui.until(() => polls > 0);
-  assert.equal(Boolean(ui.doc.querySelector('[role=alert]')), false, 'Polling must not expose recovery while the guide is still being sent');
+  ui.state.templateAuthoring = { phase: 'creating', workflowId: 'workflow-one', revision: 0, guideSent: false };
+  await ui.startConversation(); await ui.reload();
+  await ui.until(() => rejectPoll);
+  await ui.click(ui.doc.querySelector('[role=alert] button'));
+  await React.act(async () => rejectPoll(new Error('Status unavailable')));
+  await ui.setRunning(true);
+  failState = true;
+  await ui.setRunning(false);
+  assert.equal(Boolean(ui.doc.querySelector('[role=alert]')), false, 'Background reads must not expose recovery while the guide is still being sent');
   assert.equal(Boolean(ui.doc.querySelector('button')), false);
+  failState = false;
   release();
   await ui.until(() => ui.state.templateAuthoring.guideSent);
   assert.equal(ui.doc.querySelector('[role=alert]'), null);
   assert.equal(ui.sent.length, 1);
+});
+
+test('a slow full refresh initializes the catalog while an authoring workflow is already polling', async t => {
+  let reads = 0, release;
+  const ui = await fixture(t, {
+    state: (_payload, state) => {
+      if (++reads === 1) {
+        state.templateAuthoring = { phase: 'creating', workflowId: 'workflow-one', revision: 1, guideSent: true };
+        return { ...state };
+      }
+      return new Promise(resolve => { release = () => {
+        delete state.templateAuthoring;
+        state.templates.push(personal);
+        resolve({ ...state });
+      }; });
+    },
+  });
+  t.after(() => release?.());
+  await ui.reload();
+  await React.act(async () => delay(400));
+  await React.act(async () => release());
+  await ui.until(() => ui.doc.querySelector('[data-personal-card="personal-imported"]'));
+  assert.equal(reads, 2, 'Each mount performs one full read');
+  const polls = ui.requests.filter(item => item.endpoint === 'template/authoring-state').length;
+  await React.act(async () => delay(400));
+  assert.equal(ui.requests.filter(item => item.endpoint === 'template/authoring-state').length, polls, 'Absent authoring stays idle');
+});
+
+test('a slow completed-turn refresh discovers review while active authoring polls', async t => {
+  let reads = 0, release;
+  const ui = await fixture(t, {
+    state: (_payload, state) => {
+      if (++reads === 1) {
+        state.templateAuthoring = { phase: 'creating', workflowId: 'workflow-one', revision: 1, guideSent: true };
+        return { ...state };
+      }
+      return new Promise(resolve => { release = () => resolve({ ...state }); });
+    },
+    'template/authoring-preview': () => ({ preview: personal.previewImages[0] }),
+    'template/authoring-state': () => ({ phase: 'creating', workflowId: 'workflow-one', revision: 1, guideSent: true }),
+  });
+  t.after(() => release?.());
+  await ui.startConversation();
+  await ui.setRunning(true);
+  ui.state.templateAuthoring = { phase: 'review', workflowId: 'workflow-one', revision: 2, draftId: 'draft-two', slideCount: 2, name: 'Finished project', guideSent: true };
+  await ui.setRunning(false);
+  await React.act(async () => delay(400));
+  await React.act(async () => release());
+  await ui.until(() => ui.doc.querySelector('[data-template-authoring=review]'));
+  assert.equal(ui.doc.querySelector('[data-template-authoring] input').value, 'Finished project');
+});
+
+for (const action of ['save', 'exit']) test(`a late authoring poll cannot replace review during ${action}`, async t => {
+  let releasePoll, finishAction;
+  const ui = await fixture(t, {
+    'template/authoring-preview': () => ({ preview: personal.previewImages[0] }),
+    'template/authoring-state': () => new Promise(resolve => { releasePoll = () => resolve({
+      phase: 'review', workflowId: 'workflow-one', revision: 0, draftId: 'old-draft', slideCount: 1, name: 'Old review', guideSent: true,
+    }); }),
+    [`template/authoring-${action}`]: (payload, state) => new Promise(resolve => { finishAction = () => {
+      if (action === 'save') state.templateAuthoring = { ...state.templateAuthoring, phase: 'saved', name: payload.name };
+      else delete state.templateAuthoring;
+      resolve(state.templateAuthoring);
+    }; }),
+  });
+  t.after(() => { releasePoll?.(); finishAction?.(); });
+  ui.state.templateAuthoring = { phase: 'review', workflowId: 'workflow-one', revision: 1, draftId: 'draft-one', slideCount: 2, name: 'Current review', guideSent: true };
+  await ui.startConversation(); await ui.reload();
+  await ui.until(() => releasePoll && ui.doc.querySelector('.dsh-ppt-authoring-thumbnail img'));
+  await ui.click(ui.doc.querySelector(action === 'save' ? '[data-template-authoring] button[type=submit]' : '[data-template-authoring] header button'));
+  await React.act(async () => releasePoll());
+  assert.equal(ui.doc.querySelector('[data-template-authoring] input').value, 'Current review');
+  assert.match(ui.doc.querySelector('[data-template-authoring]').textContent, /2 template pages/);
+  assert(ui.doc.querySelector('[data-template-authoring] header button').disabled);
+  await React.act(async () => finishAction());
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+  assert.equal(ui.doc.querySelector('[role=alert]'), null);
 });
 
 test('a direct template tool review appears after a conversation turn without reopening the picker', async t => {
@@ -233,6 +318,45 @@ test('a direct template tool review appears after a conversation turn without re
   assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
   assert.equal(ui.state.templateAuthoring.phase, 'saved');
   assert.match(ui.doc.querySelector('[role=status]').textContent, /Existing project.*saved/);
+});
+
+for (const previousPhase of [null, 'saved']) test(`a failed completion read offers contextual recovery after ${previousPhase ?? 'no'} authoring state`, async t => {
+  let reads = 0, finishRetry;
+  const ui = await fixture(t, {
+    state: (_payload, state) => {
+      reads++;
+      if (reads === 1 && previousPhase) state.templateAuthoring = { phase: previousPhase, workflowId: 'previous-workflow', name: 'Previous template' };
+      if (reads === 2 || reads === 3) throw new Error('State unavailable');
+      if (reads === 4) return new Promise(resolve => { finishRetry = () => resolve({ ...state }); });
+      return { ...state };
+    },
+    'template/authoring-preview': () => ({ preview: personal.previewImages[0] }),
+  });
+  t.after(() => finishRetry?.());
+  await ui.startConversation();
+  await ui.setRunning(true);
+  ui.state.templateAuthoring = { phase: 'review', workflowId: 'direct-workflow', revision: 1, draftId: 'direct-draft', slideCount: 2, name: 'Existing project', guideSent: true };
+  await ui.setRunning(false);
+  let alert = ui.doc.querySelector('[role=alert]');
+  assert(alert, 'A failed completion read must explain recovery in the conversation');
+  assert.match(alert.textContent, /template status.*State unavailable/i);
+  assert.equal(alert.querySelector('button')?.textContent, 'Reload templates');
+  assert.equal(ui.doc.querySelectorAll('[role=alert]').length, 1);
+  assert.equal(ui.doc.querySelectorAll('button').length, 1, 'The retry belongs to the explanation');
+  await ui.click(alert.querySelector('button'));
+  alert = ui.doc.querySelector('[role=alert]');
+  assert.equal(ui.doc.querySelectorAll('[role=alert]').length, 1, 'A failed retry must not duplicate the operation error');
+  assert.match(alert.textContent, /template status.*State unavailable/i);
+  await ui.click(alert.querySelector('button'));
+  assert(finishRetry);
+  assert.equal(ui.doc.querySelector('[role=alert]'), null, 'A pending retry must hide recovery controls');
+  assert.equal(ui.doc.querySelector('button'), null);
+  await React.act(async () => finishRetry());
+  await ui.until(() => ui.doc.querySelector('[data-template-authoring=review]'));
+  assert.equal(ui.doc.querySelector('[data-template-authoring] input').value, 'Existing project');
+  assert.equal(ui.doc.querySelector('[role=alert]'), null);
+  assert.equal(ui.requests.some(item => item.endpoint === 'template/authoring-start'), false);
+  assert.equal(ui.sent.length, 0, 'Recovery must not send a new template guide');
 });
 
 test('review previews every page, blocks save while running, and saves without changing selection', async t => {
