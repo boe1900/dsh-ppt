@@ -94,10 +94,12 @@ test('guided template preparation previews, saves an immutable native source, an
   const initial = await f.step();
   assert(initial.messages.some(message => message.source.kind === 'skill-invocation' && message.source.name === 'dsh-ppt-template'));
   for (const message of initial.messages) f.agentFor('session-a').session.append('user/message', message, { surfaceOp: 'append' });
-  const prepared = await f.run('ppt_template_prepare', { project_path: 'template', name: 'Weekly report', description: 'Blue business layouts' });
+  const prepared = await f.run('ppt_template_prepare', { project_path: 'template', name: ` ${'W'.repeat(80)} `, description: 'Blue business layouts' });
   assert.equal(prepared.slideCount, 2);
   const review = await f.request('template/authoring-state');
+  assert.notEqual(review, null, 'A valid trimmed template name must retain the review');
   assert.equal(review.phase, 'review');
+  assert.equal(review.name, 'W'.repeat(80));
   assert.equal((await f.request('state')).decks.length, 0, 'Preparing a template must not consume a delivery slot');
   await f.step(2);
   assert.equal((await f.request('template/authoring-state')).phase, 'review', 'Tool pre-steps preserve review');
