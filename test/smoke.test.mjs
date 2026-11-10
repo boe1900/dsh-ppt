@@ -18,7 +18,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { Session } from '@deepseek-ai/dsh-session';
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots';
 import { SkillRegistry } from '@deepseek-ai/dsh-skill';
-import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt';
+import { SystemPrompt, renderPrompt } from '@deepseek-ai/dsh-system-prompt';
 import manifest from '../package.json' with { type: 'json' };
 import { definitions } from '../lib/catalog.js';
 import { previewFiles } from '../lib/preview-manifest.js';
@@ -29,6 +29,18 @@ import * as pptPreset from '../lib/preset.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const references = path.join(root, 'skills/dsh-ppt/references');
 const cli = path.join(root, 'lib/bin.js');
+
+test('PPT persona renders with the prompt variables provided by Harness rc.5', async t => {
+  const schema = yaml.DEFAULT_SCHEMA.extend(new yaml.Type('tag:yaml.org,2002:js', { kind: 'scalar' }));
+  const [{ insert: [preset] }] = yaml.load(await readFile(path.join(root, 'presets/ppt.patch.yml'), 'utf8'), { schema });
+  const { config } = preset.config.plugins.find(plugin => plugin.id === 'persona');
+  const ctx = new Context();
+  t.after(() => ctx.fiber.dispose());
+  await ctx.plugin(SystemPrompt, { includeHarnessIdentity: false, personaPrefix: config.prefix, personaSuffix: config.suffix ?? '' });
+  ctx.systemPrompt.variable('provider', () => 'test-provider');
+  ctx.systemPrompt.variable('model', () => 'test-model');
+  assert.match(renderPrompt(await ctx.systemPrompt.assemble()), /powered by the test-model model/);
+});
 
 test('all 16 templates include valid bilingual source and matching previews', async () => {
   assert.equal(definitions.length, 16);
