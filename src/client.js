@@ -475,6 +475,7 @@ window.__ModuleLoader__.load({
             const blank = props.useSession(current => current.blank);
             const running = props.useSession(current => current.running || (current.pendingSubmissions?.length ?? 0) > 0);
             const [operation, setOperation] = react.useState({ kind: "idle" });
+            const [savedName, setSavedName] = react.useState(null);
             const alive = react.useRef(true);
             const request = react.useRef(0);
             const refresh = async () => {
@@ -511,6 +512,7 @@ window.__ModuleLoader__.load({
                 catch (error) { if (alive.current) setOperation({ kind: "error", message: error.message }); }
             };
             const startAuthoring = () => act(async () => {
+                setSavedName(null);
                 const workflow = await props.client.call("template/authoring-start");
                 await refresh();
                 if (!alive.current || workflow.guideSent) return;
@@ -518,22 +520,35 @@ window.__ModuleLoader__.load({
                 await props.client.call("template/authoring-guided", { workflowId: workflow.workflowId });
                 await refresh();
             });
-            if (authoring) return react.createElement(TemplateAuthoringPanel, {
+            const exit = () => act(async () => {
+                await props.client.call("template/authoring-exit", { workflowId: authoring.workflowId });
+                await refresh();
+            });
+            if (authoring?.phase === "review") return react.createElement(TemplateAuthoringPanel, {
                 key: props.sessionId, client: props.client, authoring, operation, running,
-                t: props.t, sendGuide: startAuthoring,
-                exit: () => act(async () => {
-                    await props.client.call("template/authoring-exit", { workflowId: authoring.workflowId });
-                    await refresh();
-                }),
+                t: props.t, exit,
                 save: name => act(async () => {
-                    await props.client.call("template/authoring-save", { workflowId: authoring.workflowId,
+                    const saved = await props.client.call("template/authoring-save", { workflowId: authoring.workflowId,
                         revision: authoring.revision, draftId: authoring.draftId, name });
+                    if (!alive.current) return;
+                    request.current++;
+                    props.mode.setAuthoring(props.sessionId, saved);
+                    setSavedName(saved.name);
                     await refresh();
                 })
             });
             return react.createElement(react.Fragment, null,
                 operation.kind === "error" && react.createElement("p", { role: "alert" }, operation.message),
-                blank && react.createElement(OfficePptChooser, { client: props.client, mode: props.mode,
+                authoring?.phase === "creating" && react.createElement("div", { "data-template-authoring-actions": "", style: { display: "flex", justifyContent: "flex-end", gap: 12, fontSize: 12 } },
+                    !authoring.guideSent && react.createElement("button", { type: "button", disabled: operation.kind === "busy" || running, onClick: startAuthoring,
+                        style: { border: 0, padding: "2px 0", background: "none", color: "inherit", font: "inherit", cursor: "pointer" } }, props.t("authoring.retryGuide")),
+                    react.createElement("button", { type: "button", disabled: operation.kind === "busy", onClick: exit,
+                        style: { border: 0, padding: "2px 0", background: "none", color: "inherit", font: "inherit", cursor: "pointer" } }, props.t("authoring.exit"))),
+                savedName !== null && react.createElement("div", { "data-template-authoring-feedback": "", style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12 } },
+                    react.createElement("p", { role: "status" }, props.t("authoring.saved").replace("{name}", savedName)),
+                    react.createElement("button", { type: "button", "aria-label": props.t("personal.close"), onClick: () => setSavedName(null),
+                        style: { border: 0, background: "none", color: "inherit", font: "inherit", cursor: "pointer" } }, "×")),
+                blank && authoring?.phase !== "creating" && react.createElement(OfficePptChooser, { client: props.client, mode: props.mode,
                     sessionId: props.sessionId, startAuthoring, t: props.t }));
         }
         function OfficePptComposer(props) {
@@ -542,7 +557,7 @@ window.__ModuleLoader__.load({
                 return summary?.projectionValues?.agentPreset ?? summary?.agentPreset;
             });
             if (agentPreset !== "ppt") return null;
-            return react.createElement(PptSessionComposer, props);
+            return react.createElement(PptSessionComposer, { ...props, key: props.sessionId });
         }
 
 		//#endregion
@@ -570,11 +585,9 @@ window.__ModuleLoader__.load({
 			"personal.upload": "上传 PPT 模板",
 			"personal.create": "新建自定义模板",
             "authoring.entryHint": "描述想法，让 AI 帮你制作",
-            "authoring.title": "制作自定义模板",
+            "authoring.title": "模板预览",
             "authoring.exit": "结束制作",
-            "authoring.intake": "在对话里告诉 AI 模板的用途、喜欢的风格和品牌要求。做好后会在这里显示预览。",
-            "authoring.example": "例如：蓝色商务周报，中文，16:9，包含封面、章节、图文和数据页。也可以在对话中附上参考 PPT。",
-            "authoring.starter": "请使用内置 dsh-ppt-template 技能，引导我制作一套可反复复用的自定义 PPT 模板。先简短询问用途、风格和品牌要求中尚不明确的信息；如果我已给出足够信息，就直接制作。完成后请生成模板预览，由我检查、修改并在面板里命名保存。",
+            "authoring.starter": "帮我制作一套可复用的 PPT 模板，先问我用途、风格和品牌要求中还缺少的信息，也可以参考我附上的 PPT。做好后在输入框旁显示预览卡片，我可以逐页查看，填写名称后点击「保存到自定义模板」。需要调整时，我会在对话里提出。下次新建 PPT 对话，在「自定义」分类选择使用。",
             "authoring.retryGuide": "继续 AI 模板引导",
             "authoring.preview": "逐页预览",
             "authoring.review": "已生成 {count} 页模板，检查预览后保存。",
@@ -687,11 +700,9 @@ window.__ModuleLoader__.load({
 			"personal.upload": "Upload PPT template",
 			"personal.create": "Create custom template",
             "authoring.entryHint": "Describe your idea to AI",
-            "authoring.title": "Create a reusable template",
+            "authoring.title": "Template preview",
             "authoring.exit": "Finish authoring",
-            "authoring.intake": "Tell AI the purpose, visual style and branding in the conversation. Your template preview will appear here.",
-            "authoring.example": "For example: a blue weekly report, English, 16:9, with cover, section, image and data layouts. You can also attach a reference PPT in the conversation.",
-            "authoring.starter": "Use the bundled dsh-ppt-template skill to help me create a reusable custom PPT template. Briefly ask only for missing purpose, style and branding preferences; start creating if I have already provided enough detail. Prepare template previews for my review and revisions, then let me name and save the template in the panel.",
+            "authoring.starter": "Help me create a reusable PPT template. Ask only about missing purpose, style or branding, and use any PPT I attach as a reference. When ready, show a preview card beside the input so I can view every page, enter a name, and click Save to custom templates. I will request changes in the conversation. After saving, I can select it from Custom in a new PPT conversation.",
             "authoring.retryGuide": "Continue the AI template guide",
             "authoring.preview": "Preview all pages",
             "authoring.review": "{count} template pages are ready. Review them before saving.",

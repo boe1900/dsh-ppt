@@ -221,7 +221,7 @@ const PERSONAL_LIBRARY_CSS = `
 @media(hover:none){.personal-actions{opacity:1}}
 `;
 
-function TemplateAuthoringPanel({ client, authoring, operation, running, sendGuide, save, exit, t }) {
+function TemplateAuthoringPanel({ client, authoring, operation, running, save, exit, t }) {
   const h = react.createElement;
   const [name, setName] = react.useState(authoring.name ?? '');
   const [viewer, setViewer] = react.useState(false);
@@ -231,25 +231,23 @@ function TemplateAuthoringPanel({ client, authoring, operation, running, sendGui
   const [zoom, setZoom] = react.useState(1);
   const dialog = react.useRef(null);
   const titleId = react.useId();
-  const review = authoring.phase === 'review';
   const busy = operation.kind === 'busy';
   const identity = `${authoring.workflowId}:${authoring.revision}`;
   react.useEffect(() => { setName(authoring.name ?? ''); setPage(1); setZoom(1); setViewer(false); }, [identity]);
   react.useEffect(() => {
-    if (!review) return;
     let alive = true;
     setPreview({ kind: 'loading' });
     client.call('template/authoring-preview', { workflowId: authoring.workflowId, revision: authoring.revision, draftId: authoring.draftId, page })
       .then(value => { if (alive) setPreview({ kind: 'ready', src: value.preview }); })
       .catch(error => { if (alive) setPreview({ kind: 'error', message: error.message }); });
     return () => { alive = false; };
-  }, [client, identity, review, page, retry]);
+  }, [client, identity, page, retry]);
   react.useLayoutEffect(() => {
-    if (!viewer || !review) return;
+    if (!viewer) return;
     const node = dialog.current;
     node.showModal(); node.querySelector('button')?.focus();
     return () => { if (node.open) node.close(); };
-  }, [viewer, review]);
+  }, [viewer]);
   const previewContent = () => preview.kind === 'ready'
     ? h(FitPreviewImage, { src: preview.src, alt: `${t('personal.preview')} ${page}`, zoom, onZoom: setZoom, onError: () => setPreview({ kind: 'error', message: t('personal.previewFailed') }) })
     : preview.kind === 'error' ? h('div', { role: 'alert' }, h('p', null, preview.message), h('button', { type: 'button', onClick: () => setRetry(value => value + 1) }, t('templates.retry')))
@@ -258,21 +256,16 @@ function TemplateAuthoringPanel({ client, authoring, operation, running, sendGui
     h('style', null, TEMPLATE_VIEWER_CSS + AUTHORING_CSS),
     h('header', null, h('strong', { id: titleId }, t('authoring.title')), h('button', { type: 'button', disabled: busy, onClick: exit }, t('authoring.exit'))),
     operation.kind === 'error' && h('p', { role: 'alert' }, operation.message),
-    authoring.phase === 'saved' ? h('p', { role: 'status' }, t('authoring.saved').replace('{name}', authoring.name ?? ''))
-      : review ? h(react.Fragment, null,
-        h('div', { className: 'dsh-ppt-authoring-review' },
-          h('button', { type: 'button', className: 'dsh-ppt-authoring-thumbnail', onClick: () => setViewer(true), 'aria-label': t('authoring.preview') },
-            preview.kind === 'ready' ? h('img', { src: preview.src, alt: `${t('personal.preview')} ${page}` }) : h('span', null, t('authoring.preview'))),
-          h('div', null, h('p', null, t('authoring.review').replace('{count}', authoring.slideCount)),
-            h('button', { type: 'button', onClick: () => setViewer(true) }, t('authoring.preview')), h('small', null, t('authoring.revise')))),
-        h('form', { onSubmit: event => { event.preventDefault(); if (preview.kind === 'ready' && !running && name.trim()) save(name); } },
-          h('label', null, t('personal.name'), h('input', { value: name, maxLength: 80, required: true, disabled: busy || running, onChange: event => setName(event.target.value) })),
-          h('button', { type: 'submit', disabled: busy || running || preview.kind !== 'ready' || !name.trim() }, t('authoring.save'))),
-        preview.kind === 'error' && previewContent())
-      : h(react.Fragment, null,
-        h('p', null, t('authoring.intake')), h('small', null, t('authoring.example')),
-        !authoring.guideSent && h('button', { type: 'button', disabled: busy || running, onClick: sendGuide }, t('authoring.retryGuide'))),
-    viewer && review && h('dialog', { ref: dialog, className: 'ppt-template-viewer', 'aria-label': t('authoring.preview'),
+    h('div', { className: 'dsh-ppt-authoring-review' },
+      h('button', { type: 'button', className: 'dsh-ppt-authoring-thumbnail', onClick: () => setViewer(true), 'aria-label': t('authoring.preview') },
+        preview.kind === 'ready' ? h('img', { src: preview.src, alt: `${t('personal.preview')} ${page}` }) : h('span', null, t('authoring.preview'))),
+      h('div', null, h('p', null, t('authoring.review').replace('{count}', authoring.slideCount)),
+        h('button', { type: 'button', onClick: () => setViewer(true) }, t('authoring.preview')), h('small', null, t('authoring.revise')))),
+    h('form', { onSubmit: event => { event.preventDefault(); if (preview.kind === 'ready' && !running && name.trim()) save(name); } },
+      h('label', null, t('personal.name'), h('input', { value: name, maxLength: 80, required: true, disabled: busy || running, onChange: event => setName(event.target.value) })),
+      h('button', { type: 'submit', disabled: busy || running || preview.kind !== 'ready' || !name.trim() }, t('authoring.save'))),
+    preview.kind === 'error' && previewContent(),
+    viewer && h('dialog', { ref: dialog, className: 'ppt-template-viewer', 'aria-label': t('authoring.preview'),
       onCancel: event => { event.preventDefault(); setViewer(false); }, onKeyDown: event => {
         if (event.key === 'ArrowLeft' && page > 1) { event.preventDefault(); setPage(value => value - 1); }
         if (event.key === 'ArrowRight' && page < authoring.slideCount) { event.preventDefault(); setPage(value => value + 1); }

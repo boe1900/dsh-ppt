@@ -116,20 +116,29 @@ test('new template invokes the guide without changing composer text or attachmen
   assert.equal(ui.doc.querySelector('input[type=file]'), null);
   await ui.click(ui.doc.querySelector('.personal-create'));
   assert.equal(ui.sent.length, 1);
-  assert.match(ui.sent[0].text, /dsh-ppt-template/);
+  assert.doesNotMatch(ui.sent[0].text, /dsh-ppt-template|skill/i);
+  assert.match(ui.sent[0].text, /purpose, style or branding/);
+  assert.match(ui.sent[0].text, /preview card beside the input.*view every page, enter a name, and click Save to custom templates/);
+  assert.match(ui.sent[0].text, /Custom in a new PPT conversation/);
   assert.deepEqual(ui.composer, { text: 'Keep my existing draft', attachments: [{ name: 'brand.pptx' }] });
-  assert(ui.doc.querySelector('[data-template-authoring=creating]'));
-  assert.equal(ui.doc.querySelector('[data-template-authoring] button[type=submit]'), null);
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+  assert.equal(ui.doc.querySelector('[data-template-authoring-actions]').textContent, 'Finish authoring');
+  assert.equal(ui.doc.querySelector('form'), null);
   await ui.startConversation();
-  assert(ui.doc.querySelector('[data-template-authoring=creating]'), 'The authoring panel remains after the first message');
+  assert(ui.doc.querySelector('[data-template-authoring-actions]'), 'An exit action remains after the first message');
   await ui.reload();
-  assert(ui.doc.querySelector('[data-template-authoring=creating]'), 'Reload restores the workflow');
+  assert(ui.doc.querySelector('[data-template-authoring-actions]'), 'Reload restores the exit action');
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
   assert.equal(ui.sent.length, 1, 'Reload must not send the guide twice');
   await ui.switchSession('other-session');
-  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+  assert.equal(ui.doc.querySelector('[data-template-authoring-actions]'), null);
   await ui.switchSession('custom-template-test');
-  assert(ui.doc.querySelector('[data-template-authoring=creating]'));
+  assert(ui.doc.querySelector('[data-template-authoring-actions]'));
   assert.equal(ui.requests.some(item => /upload|template\/cancel/.test(item.endpoint)), false);
+  await ui.click(ui.doc.querySelector('[data-template-authoring-actions] button'));
+  assert.equal(ui.state.templateAuthoring, undefined);
+  assert.equal(ui.doc.querySelector('[data-template-authoring-actions]'), null);
+  assert(ui.requests.some(item => item.endpoint === 'template/authoring-exit' && item.payload.workflowId === 'workflow-one'));
 });
 
 test('guide admission failure exposes a retry and resumes the same workflow', async t => {
@@ -138,17 +147,26 @@ test('guide admission failure exposes a retry and resumes the same workflow', as
   await ui.click(ui.doc.querySelector('.personal-create'));
   assert.match(ui.doc.querySelector('[role=alert]').textContent, /Connection unavailable/);
   assert.equal(ui.state.templateAuthoring.guideSent, false);
-  await ui.click([...ui.doc.querySelectorAll('[data-template-authoring] button')].find(node => /Continue the AI/.test(node.textContent)));
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+  await ui.reload();
+  assert.equal(attempts, 1, 'Reload must leave guide retry to the user');
+  const retry = [...ui.doc.querySelectorAll('[data-template-authoring-actions] button')].find(node => /Continue the AI/.test(node.textContent));
+  await ui.setRunning(true);
+  assert(retry.disabled);
+  await ui.setRunning(false);
+  await ui.click(retry);
   assert.equal(ui.sent.length, 1);
   assert.equal(ui.state.templateAuthoring.workflowId, 'workflow-one');
   assert.equal(ui.state.templateAuthoring.guideSent, true);
 });
 
 test('review previews every page, blocks save while running, and saves without changing selection', async t => {
+  let finishSave;
   const ui = await fixture(t, {
     'template/authoring-preview': payload => ({ page: payload.page, preview: `data:image/png;base64,${Buffer.from('page'+payload.page).toString('base64')}` }),
-    'template/authoring-save': (payload, state) => {
+    'template/authoring-save': async (payload, state) => {
       assert.equal(payload.revision, 3); assert.equal(payload.draftId, 'draft-one');
+      await new Promise(resolve => { finishSave = resolve; });
       state.templateAuthoring = { ...state.templateAuthoring, phase: 'saved', name: payload.name };
       state.templates.push(personal);
       return state.templateAuthoring;
@@ -157,6 +175,9 @@ test('review previews every page, blocks save while running, and saves without c
   ui.state.selectedTemplateId = definitions[0].id;
   ui.state.templateAuthoring = { phase: 'review', workflowId: 'workflow-one', revision: 3, draftId: 'draft-one', slideCount: 2, name: 'Weekly report', guideSent: true };
   await ui.startConversation(); await ui.reload();
+  assert.equal(ui.doc.querySelector('[data-template-authoring=review] strong').textContent, 'Template preview');
+  assert.match(ui.doc.querySelector('[data-template-authoring]').textContent, /2 template pages/);
+  assert.match(ui.doc.querySelector('[data-template-authoring]').textContent, /tell AI what to change in the conversation/);
   await ui.until(() => ui.doc.querySelector('.dsh-ppt-authoring-thumbnail img'));
   await ui.click(ui.doc.querySelector('.dsh-ppt-authoring-thumbnail'));
   assert(ui.doc.querySelector('.ppt-template-viewer').open);
@@ -167,10 +188,64 @@ test('review previews every page, blocks save while running, and saves without c
   assert(ui.doc.querySelector('[data-template-authoring] button[type=submit]').disabled);
   await ui.setRunning(false);
   await ui.click(ui.doc.querySelector('[data-template-authoring] button[type=submit]'));
-  assert(ui.doc.querySelector('[data-template-authoring=saved]'));
+  assert(ui.doc.querySelector('[data-template-authoring] button[type=submit]').disabled);
+  assert(ui.doc.querySelector('[data-template-authoring] input').disabled);
+  assert(ui.doc.querySelector('[data-template-authoring] header button').disabled);
+  await React.act(async () => finishSave());
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+  assert.match(ui.doc.querySelector('[data-template-authoring-feedback] [role=status]').textContent, /Weekly report.*saved.*new PPT conversation.*Custom/);
   assert.equal(ui.state.selectedTemplateId, definitions[0].id);
   assert.equal(ui.requests.some(item => item.endpoint === 'template/select'), false);
+  await ui.click(ui.doc.querySelector('[data-template-authoring-feedback] button[aria-label=Close]'));
+  assert.equal(ui.doc.querySelector('[data-template-authoring-feedback]'), null);
+  await ui.reload();
+  assert.equal(ui.doc.querySelector('[data-template-authoring-feedback]'), null, 'Reload does not replay save feedback');
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+});
+
+test('saved feedback disappears on navigation and persisted saved workflows stay quiet', async t => {
+  const ui = await fixture(t, {
+    'template/authoring-preview': () => ({ preview: personal.previewImages[0] }),
+    'template/authoring-save': (payload, state) => state.templateAuthoring = { ...state.templateAuthoring, phase: 'saved', name: payload.name },
+  });
+  ui.state.templateAuthoring = { phase: 'review', workflowId: 'workflow-one', revision: 1, draftId: 'draft-one', slideCount: 2, name: 'Brand slides', guideSent: true };
+  await ui.startConversation(); await ui.reload();
+  await ui.until(() => ui.doc.querySelector('.dsh-ppt-authoring-thumbnail img'));
+  await ui.click(ui.doc.querySelector('[data-template-authoring] button[type=submit]'));
+  assert(ui.doc.querySelector('[data-template-authoring-feedback]'));
+  await ui.switchSession('other-session');
+  assert.equal(ui.doc.querySelector('[data-template-authoring-feedback]'), null);
+  await ui.switchSession('custom-template-test');
+  assert.equal(ui.doc.querySelector('[data-template-authoring-feedback]'), null);
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+  assert.equal(ui.sent.length, 0);
+});
+
+test('review keeps preview retries and explicit exit while creating hides the result card', async t => {
+  let attempts = 0;
+  const ui = await fixture(t, {
+    'template/authoring-preview': payload => {
+      assert.equal(payload.revision, 4); assert.equal(payload.draftId, 'draft-four');
+      if (++attempts === 1) throw new Error('Preview unavailable');
+      return { preview: personal.previewImages[0] };
+    },
+  });
+  ui.state.templateAuthoring = { phase: 'review', workflowId: 'workflow-one', revision: 4, draftId: 'draft-four', slideCount: 2, name: 'Brand slides', guideSent: true };
+  await ui.startConversation(); await ui.reload();
+  assert.match(ui.doc.querySelector('[role=alert]').textContent, /Preview unavailable/);
+  assert(ui.doc.querySelector('[data-template-authoring] button[type=submit]').disabled);
+  await ui.click(ui.doc.querySelector('[role=alert] button'));
+  await ui.until(() => ui.doc.querySelector('.dsh-ppt-authoring-thumbnail img'));
+  assert.equal(attempts, 2);
+  assert.equal(ui.doc.querySelector('[data-template-authoring] button[type=submit]').disabled, false);
+  ui.state.templateAuthoring = { ...ui.state.templateAuthoring, phase: 'creating', revision: 5 };
+  await ui.reload();
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+  assert(ui.doc.querySelector('[data-template-authoring-actions]'));
+  ui.state.templateAuthoring = { ...ui.state.templateAuthoring, phase: 'review', revision: 4 };
+  await ui.reload();
   await ui.click(ui.doc.querySelector('[data-template-authoring] header button'));
+  assert.equal(ui.state.templateAuthoring, undefined);
   assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
 });
 
