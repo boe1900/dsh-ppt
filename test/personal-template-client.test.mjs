@@ -194,6 +194,23 @@ test('a creating workflow does not add controls when polling fails', async t => 
   assert.equal(ui.sent.length, 0);
 });
 
+test('polling failures keep an in-flight template guide free of recovery controls', async t => {
+  let release, polls = 0;
+  const ui = await fixture(t, {
+    send: () => new Promise(resolve => { release = resolve; }),
+    'template/authoring-state': () => { polls++; throw new Error('Status unavailable'); },
+  });
+  t.after(() => release?.());
+  await ui.click(ui.doc.querySelector('.personal-create'));
+  await ui.until(() => polls > 0);
+  assert.equal(Boolean(ui.doc.querySelector('[role=alert]')), false, 'Polling must not expose recovery while the guide is still being sent');
+  assert.equal(Boolean(ui.doc.querySelector('button')), false);
+  release();
+  await ui.until(() => ui.state.templateAuthoring.guideSent);
+  assert.equal(ui.doc.querySelector('[role=alert]'), null);
+  assert.equal(ui.sent.length, 1);
+});
+
 test('review previews every page, blocks save while running, and saves without changing selection', async t => {
   let finishSave;
   const ui = await fixture(t, {
