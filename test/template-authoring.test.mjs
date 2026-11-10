@@ -86,7 +86,6 @@ test('guided template preparation previews, saves an immutable native source, an
   const assetPage = JSON.parse(await readFile(assetPagePath, 'utf8'));
   assetPage.elements.push({ elementId: 'brand-image', elementType: 'image', bounds: [60, 180, 120, 120], src: 'assets/brand.png' });
   await writeFile(assetPagePath, JSON.stringify(assetPage));
-  await assert.rejects(f.run('ppt_template_prepare', { project_path: 'template', name: 'Weekly' }), /先.*新建/);
   await f.request('template/select', { templateId: 'dsh-blue-professional', mode: 'ppt' });
   const start = await f.request('template/authoring-start');
   assert.equal((await f.request('template/authoring-start')).workflowId, start.workflowId);
@@ -137,6 +136,38 @@ test('guided template preparation previews, saves an immutable native source, an
   await f.request('template/authoring-exit', { workflowId: review.workflowId });
   assert.equal(await f.request('template/authoring-state'), null);
   assert((await f.request('state')).templates.some(item => item.id === saved.templateId));
+});
+
+test('an existing project prepares, previews and saves without the template entry button', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  f.user('Use this finished project as a reusable template');
+  await f.step();
+  assert.equal(await f.request('template/authoring-state'), null);
+  const prepared = await f.run('ppt_template_prepare', { project_path: 'template', name: 'Existing project' });
+  const review = await f.request('template/authoring-state');
+  assert.equal(review.phase, 'review');
+  assert.equal(prepared.projectPath, 'template');
+  assert.equal(prepared.slideCount, 2);
+  assert.equal((await f.request('state')).templates.some(item => item.id === review.templateId), false, 'Preparing previews does not save the template');
+  for (let page = 1; page <= prepared.slideCount; page++) {
+    const preview = await f.request('template/authoring-preview', { ...review, page });
+    const info = await sharp(Buffer.from(preview.preview.split(',')[1], 'base64')).metadata();
+    assert.equal(info.width, 1920);
+    assert.equal(info.height, 1080);
+  }
+  const saved = await f.request('template/authoring-save', { ...review, name: 'Named by the user' });
+  assert.equal(saved.phase, 'saved');
+  await f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'reused' }, 'session-b');
+  assert.deepEqual(await readFile(path.join(f.workspace, 'reused/pages/data.page')), await readFile(path.join(f.workspace, 'template/pages/data.page')));
+  await f.project('another-template');
+  await f.run('ppt_template_prepare', { project_path: 'another-template', name: 'Another template' });
+  const next = await f.request('template/authoring-state');
+  assert.equal(next.phase, 'review');
+  assert.notEqual(next.workflowId, saved.workflowId, 'A saved workflow admits a new template without the entry button');
+  await assert.rejects(f.request('template/authoring-save', { ...review, name: 'Old preview' }), /版本已更新/);
+  const record = (await f.request('state')).templates.find(item => item.id === saved.templateId);
+  assert.equal(record.name, 'Named by the user', 'Preparing another template preserves the saved template');
 });
 
 test('new user revisions invalidate reviewed snapshots and cancellation prevents late publication', { timeout: 180000 }, async t => {

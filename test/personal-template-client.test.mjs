@@ -211,6 +211,30 @@ test('polling failures keep an in-flight template guide free of recovery control
   assert.equal(ui.sent.length, 1);
 });
 
+test('a direct template tool review appears after a conversation turn without reopening the picker', async t => {
+  const ui = await fixture(t, {
+    'template/authoring-preview': payload => ({ page: payload.page, preview: `data:image/png;base64,${Buffer.from('page'+payload.page).toString('base64')}` }),
+    'template/authoring-save': (payload, state) => state.templateAuthoring = { ...state.templateAuthoring, phase: 'saved', name: payload.name },
+  });
+  await ui.startConversation();
+  assert.equal(ui.doc.querySelector('[data-office-ppt-template-panel]'), null, 'The conversation has already hidden the picker');
+  await ui.setRunning(true);
+  ui.state.templateAuthoring = { phase: 'review', workflowId: 'direct-workflow', revision: 1, draftId: 'direct-draft', slideCount: 2, name: 'Existing project', guideSent: true };
+  await ui.setRunning(false);
+  await ui.until(() => ui.doc.querySelector('[data-template-authoring=review]'));
+  await ui.until(() => ui.doc.querySelector('.dsh-ppt-authoring-thumbnail img'));
+  assert.equal(ui.requests.some(item => item.endpoint === 'template/authoring-start'), false, 'Review discovery must not need the entry button');
+  assert.equal(ui.sent.length, 0, 'Review discovery must not send another guide');
+  await ui.click(ui.doc.querySelector('.dsh-ppt-authoring-thumbnail'));
+  await ui.click(ui.doc.querySelector('button[aria-label="Next page"]'));
+  await ui.until(() => ui.doc.querySelector('.ppt-template-viewer img')?.src.endsWith(Buffer.from('page2').toString('base64')));
+  await ui.click(ui.doc.querySelector('.ppt-template-viewer button[aria-label=Close]'));
+  await ui.click(ui.doc.querySelector('[data-template-authoring] button[type=submit]'));
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+  assert.equal(ui.state.templateAuthoring.phase, 'saved');
+  assert.match(ui.doc.querySelector('[role=status]').textContent, /Existing project.*saved/);
+});
+
 test('review previews every page, blocks save while running, and saves without changing selection', async t => {
   let finishSave;
   const ui = await fixture(t, {
