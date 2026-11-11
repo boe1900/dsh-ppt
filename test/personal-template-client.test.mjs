@@ -36,7 +36,9 @@ async function fixture(t, handlers = {}) {
   vm.runInNewContext(await readFile(new URL('../lib/client.js', import.meta.url), 'utf8'), {
     window: dom.window, document: dom.window.document, AbortController, Node: dom.window.Node,
     FileReader: dom.window.FileReader, DOMException: dom.window.DOMException, crypto, btoa, atob, Blob, URL,
-    getComputedStyle: dom.window.getComputedStyle.bind(dom.window), performance, setTimeout, clearTimeout,
+    ResizeObserver: dom.window.ResizeObserver,
+    getComputedStyle: dom.window.getComputedStyle.bind(dom.window), performance,
+    setTimeout: handlers.timers?.setTimeout ?? setTimeout, clearTimeout: handlers.timers?.clearTimeout ?? clearTimeout,
   });
   const rpc = { async call(channel, endpoint, payload) {
     assert.equal(channel, '/dsh-ppt');
@@ -148,6 +150,34 @@ test('built-in preview eyes browse every page without selecting until explicitly
   assert(doc.querySelector('.ppt-template-viewer').open);
 });
 
+test('preview fits fractional viewport bounds without creating overflow', async t => {
+  const observers = [];
+  const ui = await fixture(t, { setupWindow(window) {
+    Object.defineProperties(window.HTMLElement.prototype, {
+      clientWidth: { get: () => 591 },
+      clientHeight: { get: () => 535 },
+    });
+    window.ResizeObserver = class {
+      constructor(callback) { this.callback = callback; observers.push(this); }
+      observe(node) { this.node = node; }
+      disconnect() {}
+    };
+  } });
+  await ui.click(ui.doc.querySelector('.ppt-preview-open'));
+  const viewport = ui.doc.querySelector('.ppt-fit-viewport');
+  const observer = observers.find(item => item.node === viewport);
+  assert(observer);
+  const bounds = { width: 590.625, height: 534.5 };
+  await React.act(async () => observer.callback([{ target: viewport, contentRect: bounds }]));
+  const image = viewport.querySelector('img');
+  assert(Number.parseFloat(image.style.width) <= bounds.width, 'The fitted slide must stay within the fractional width');
+  assert(Number.parseFloat(image.style.height) <= bounds.height, 'The fitted slide must stay within the fractional height');
+  assert(Number.parseFloat(viewport.firstElementChild.style.width) <= bounds.width, 'Centering must not introduce horizontal overflow');
+  assert(Number.parseFloat(viewport.firstElementChild.style.height) <= bounds.height, 'Centering must not introduce vertical overflow');
+  await React.act(async () => viewport.dispatchEvent(new window.WheelEvent('wheel', { ctrlKey: true, deltaY: -40, bubbles: true, cancelable: true })));
+  assert(Number.parseFloat(image.style.width) > bounds.width, 'Explicit zoom must still create a scrollable slide');
+});
+
 test('reopening the picker refreshes profile templates changed in another conversation', async t => {
   const ui = await fixture(t);
   assert.equal(ui.doc.querySelector('[data-personal-card]'), null);
@@ -160,6 +190,46 @@ test('reopening the picker refreshes profile templates changed in another conver
   await ui.setPreset('ppt');
   assert.equal(ui.doc.querySelector('[data-personal-card]'), null);
   assert.equal(ui.requests.filter(item => item.endpoint === 'state').length, 3);
+});
+
+test('migration feedback can be dismissed without replaying on identical refreshes', async t => {
+  const ui = await fixture(t, { state: (_payload, state) => ({ ...state,
+    templateMigration: { reason: 'personal-template-deleted' } }) });
+  const notice = () => ui.doc.querySelector('.dsh-ppt-panel-notice');
+  assert.match(notice().textContent, /selected personal template was deleted/);
+  await ui.click(notice().querySelector('button[aria-label=Close]'));
+  assert.equal(notice(), null);
+  await ui.setRunning(true);
+  await ui.setRunning(false);
+  assert.equal(ui.requests.filter(item => item.endpoint === 'state').length, 2);
+  assert.equal(notice(), null, 'An unchanged server notice must not reopen dismissed feedback');
+  await ui.click(ui.doc.querySelector('[data-ppt-category=personal]'));
+  assert.equal(notice(), null, 'Changing template categories must not reopen feedback');
+  await ui.switchSession('another-missing-selection');
+  assert.match(notice().textContent, /selected personal template was deleted/, 'Other conversations own their feedback');
+});
+
+test('replacement selection clears migration feedback and later migrations remain visible', async t => {
+  let migration = 'personal-template-deleted';
+  const ui = await fixture(t, {
+    state: (_payload, state) => ({ ...state, templateMigration: migration ? { reason: migration } : undefined }),
+    'template/select': (payload, state) => { state.selectedTemplateId = payload.templateId; migration = null; },
+  });
+  const notice = () => ui.doc.querySelector('.dsh-ppt-panel-notice');
+  assert(notice());
+  await ui.click(ui.doc.querySelector('article button[aria-pressed]'));
+  assert.equal(notice(), null);
+  await ui.setRunning(true);
+  await ui.setRunning(false);
+  assert.equal(notice(), null);
+  migration = 'personal-template-deleted';
+  await ui.setRunning(true);
+  await ui.setRunning(false);
+  assert.match(notice().textContent, /selected personal template was deleted/);
+  migration = 'template-retired';
+  await ui.setRunning(true);
+  await ui.setRunning(false);
+  assert.match(notice().textContent, /previous template was retired/);
 });
 
 test('new template invokes the guide without changing composer text or attachments', async t => {
@@ -753,4 +823,121 @@ for (const leave of ['category', 'conversation']) test(`personal package downloa
   await ui.until(() => revoked.length === 1); assert.deepEqual(revoked, ['blob:package-test']);
   assert.equal(ui.state.selectedTemplateId, null); assert.equal(ui.sent.length, 0);
   assert.deepEqual(ui.composer, { text: 'Keep my existing draft', attachments: [{ name: 'brand.pptx' }] });
+});
+
+
+function confirmationClock() {
+  let now = 0;
+  const pending = new Map();
+  return {
+    setTimeout(callback, milliseconds) {
+      if (milliseconds !== 6000) return setTimeout(callback, milliseconds);
+      const handle = Symbol('confirmation');
+      pending.set(handle, { callback, expires: now + milliseconds });
+      return handle;
+    },
+    clearTimeout(handle) { if (typeof handle === 'symbol') pending.delete(handle); else clearTimeout(handle); },
+    tick(milliseconds) {
+      now += milliseconds;
+      for (const [handle, timer] of pending) if (timer.expires <= now) {
+        pending.delete(handle); timer.callback();
+      }
+    },
+  };
+}
+
+test('template package success feedback expires and dismisses while errors stay visible', async t => {
+  const clock = confirmationClock();
+  let outcome = 'imported', failure = false;
+  const ui = await fixture(t, { timers: clock, 'template/package-import': (_payload, state) => {
+    if (failure) throw new Error('Invalid template package');
+    state.templates = [...definitions, personal];
+    return { outcome, template: personal };
+  } });
+  await ui.click(ui.doc.querySelector('[data-ppt-category="personal"]'));
+  const chooseFile = async () => {
+    const input = ui.doc.querySelector('input[type=file]');
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'shared.dshtpl', size: 4,
+      arrayBuffer: async () => Uint8Array.from([80, 75, 3, 4]).buffer }] });
+    await React.act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+  };
+  const feedback = () => ui.doc.querySelector('.personal-package-feedback');
+  await chooseFile();
+  assert.match(feedback().textContent, /Imported/);
+  await React.act(async () => clock.tick(5999));
+  assert(feedback());
+  await React.act(async () => clock.tick(1));
+  assert.equal(Boolean(feedback()), false);
+  outcome = 'existing';
+  await chooseFile();
+  assert.match(feedback().textContent, /already in your library/);
+  await ui.click(feedback().querySelector('button[aria-label=Close]'));
+  assert.equal(Boolean(feedback()), false);
+  await chooseFile();
+  await React.act(async () => clock.tick(6000));
+  assert.equal(Boolean(feedback()), false, 'Duplicate imports have the same finite confirmation lifetime');
+  failure = true;
+  await chooseFile();
+  await React.act(async () => clock.tick(7000));
+  assert.match(feedback().textContent, /Invalid template package/);
+  assert.equal(feedback().getAttribute('role'), 'alert');
+});
+
+test('an earlier export confirmation cannot clear a new operation or its confirmation', async t => {
+  const clock = confirmationClock();
+  let release, attempts = 0;
+  const ui = await fixture(t, { timers: clock, 'template/package-export': async () => {
+    if (++attempts === 2) await new Promise(resolve => { release = resolve; });
+    return { fileName: 'Brand.dshtpl', base64: 'UEsDBA==' };
+  } });
+  ui.state.templates.push(personal); await ui.reload();
+  window.HTMLAnchorElement.prototype.click = () => {};
+  const start = async () => {
+    await ui.click(ui.doc.querySelector('.personal-more'));
+    await ui.click(ui.doc.querySelector('[role=menuitem]'));
+  };
+  const feedback = () => ui.doc.querySelector('.personal-package-feedback');
+  await start();
+  assert.match(feedback().textContent, /Download started/);
+  await React.act(async () => clock.tick(5000));
+  await start();
+  await React.act(async () => clock.tick(2000));
+  assert.match(feedback().textContent, /Exporting/);
+  await React.act(async () => release());
+  assert.match(feedback().textContent, /Download started/);
+  await React.act(async () => clock.tick(5999));
+  assert(feedback(), 'A new success owns a full confirmation lifetime');
+  await React.act(async () => clock.tick(1));
+  assert.equal(Boolean(feedback()), false);
+  await start();
+  await ui.click(feedback().querySelector('button[aria-label=Close]'));
+  assert.equal(Boolean(feedback()), false);
+  await start();
+  await ui.switchSession('other-export-session');
+  await React.act(async () => clock.tick(6000));
+  assert.equal(Boolean(feedback()), false, 'Leaving a conversation cancels its confirmation');
+});
+
+test('same-name template saves each receive a fresh finite confirmation lifetime', async t => {
+  const clock = confirmationClock();
+  const ui = await fixture(t, { timers: clock,
+    'template/authoring-preview': () => ({ preview: personal.previewImages[0] }),
+    'template/authoring-save': (payload, state) => state.templateAuthoring = { ...state.templateAuthoring, phase: 'saved', name: payload.name },
+  });
+  const review = { phase: 'review', workflowId: 'workflow-one', revision: 1, draftId: 'draft-one', slideCount: 2, name: 'Brand slides', guideSent: true };
+  ui.state.templateAuthoring = review;
+  await ui.startConversation(); await ui.reload();
+  const save = () => ui.click(ui.doc.querySelector('[data-template-authoring] button[type=submit]'));
+  const feedback = () => ui.doc.querySelector('[data-template-authoring-feedback]');
+  await save();
+  assert(feedback());
+  await React.act(async () => clock.tick(5000));
+  ui.state.templateAuthoring = { ...review, revision: 2, draftId: 'draft-two' };
+  await ui.setRunning(true); await ui.setRunning(false);
+  await save();
+  await React.act(async () => clock.tick(1001));
+  assert(feedback(), 'A previous same-name save cannot dismiss the newer confirmation');
+  await React.act(async () => clock.tick(4999));
+  assert.equal(Boolean(feedback()), false);
+  assert.equal(ui.state.templateAuthoring.phase, 'saved', 'Only presentation feedback expires');
 });
