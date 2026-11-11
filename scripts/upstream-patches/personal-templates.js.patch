@@ -1,5 +1,5 @@
 diff --git a/lib/personal-templates.js b/lib/personal-templates.js
-index 1a126d4..b1cf629 100644
+index 1a126d4..c007c8b 100644
 --- a/lib/personal-templates.js
 +++ b/lib/personal-templates.js
 @@ -9,6 +9,8 @@ import { prepareOfficeFontAccess } from './office-font-access.js';
@@ -231,7 +231,7 @@ index 1a126d4..b1cf629 100644
          const {source:sampleSource,samples:templateSamples}=createPersonalTemplateSamples(original,templateProfile);
          const source=personalTemplateSourceTheme(sampleSource,templateProfile);
          const parsed = parsePptdProject(source);
-@@ -342,33 +446,185 @@ export class PersonalTemplateLibrary {
+@@ -342,33 +446,186 @@ export class PersonalTemplateLibrary {
    async previewSavedPage(sessionId, templateId, page) {
      return this.locked(() => this.audit(sessionId, 'preview-personal-template', async () => {
        const record = await this.readRecord(templateId);
@@ -398,7 +398,8 @@ index 1a126d4..b1cf629 100644
 +      await this.#writeReceipt(receipt);
 +    }
 +    const next = receipt.template, destination = path.join(await this.directory('saved'), next.id);
-+    const stage = await this.directory('commit-staging', randomUUID());
++    const staging = await this.directory('commit-staging', randomUUID());
++    const stage = path.join(staging, 'payload');
 +    try {
 +      await cp(directory, stage, { recursive: true, errorOnExist: true, force: false });
 +      const payloadRecord = { ...next }; delete payloadRecord.contentRevision;
@@ -421,7 +422,7 @@ index 1a126d4..b1cf629 100644
 +      await this.#writeReceipt({ ...receipt, status: 'committed' });
 +      await rm(directory, { recursive: true, force: true }).catch(() => {});
 +      return { template: next, base: receipt.base };
-+    } finally { await rm(stage, { recursive: true, force: true }).catch(() => {}); }
++    } finally { await rm(staging, { recursive: true, force: true }).catch(() => {}); }
 +  }
 +  async savedDraft(sessionId, draftId) {
 +    if (!DRAFT.test(draftId)) throw new Error('模板保存记录无效');
@@ -442,7 +443,7 @@ index 1a126d4..b1cf629 100644
    }
    async cancel(sessionId, draftId) {
      return this.locked(() => this.audit(sessionId, 'cancel-personal-template', async () => {
-@@ -384,28 +640,27 @@ export class PersonalTemplateLibrary {
+@@ -384,28 +641,27 @@ export class PersonalTemplateLibrary {
        const name = nameOf(changes.name);
        const description = changes.description === undefined ? undefined : descriptionOf(changes.description);
        const record = await this.readRecord(id);
@@ -477,7 +478,7 @@ index 1a126d4..b1cf629 100644
      // Walk before reading or copying; saved image paths remain confined to this project.
      const inspect = async current => {
        for (const item of await readdir(current, { withFileTypes: true })) {
-@@ -416,8 +671,53 @@ export class PersonalTemplateLibrary {
+@@ -416,8 +672,53 @@ export class PersonalTemplateLibrary {
      };
      if ((await lstat(directory)).isSymbolicLink()) throw new Error('模板工程目录无效');
      await inspect(directory);

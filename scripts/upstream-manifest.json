@@ -20,8 +20,8 @@
       "reason": "Standalone personal-template persistence uses the shared atomic store helpers.",
       "patch": "scripts/upstream-patches/personal-templates.js.patch",
       "upstreamSha256": "899892940920b391a05320ac7acb8ba7ed7b1a40a077ed2a885f279b7c41d42f",
-      "localSha256": "b592f4eda5c3338c8fbf2bec240dd0333801d65a2cf9eb55dfa6800291976e1a",
-      "patchSha256": "7c7e03d8cafc6bf0767b48ad76bbd0c5d3dfa213435c9215cfe30311b7fc3c6e"
+      "localSha256": "236fb3a190b827be2e0add0d1b25f1ebd99638316db656b5749dfe19099142ab",
+      "patchSha256": "62bf646f31190bdc6e02a2ca0b5ee0191bfcd9288770102199290fd81e889b31"
     },
     "invariant.js": {
       "reason": "Public service ownership and package identity use @cola1900/dsh-ppt.",
