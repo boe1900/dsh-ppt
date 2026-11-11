@@ -97,6 +97,23 @@ async function fixture(t, services = {}) {
   return { scratch, workspace, ctx, tools, request, run, user, step, agentFor, project, service: ctx.get(plugin.PPT_SERVICE) };
 }
 
+test('saved templates retain their editing project and resume authoring on the next chat turn', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  f.user('制作可复用模板');
+  await f.run('ppt_template_prepare', { project_path: 'template', name: '持续编辑' });
+  const review = await f.request('template/authoring-state');
+  const saved = await f.request('template/authoring-save', { ...review, name: '持续编辑' });
+  assert.equal(saved.projectPath, 'template', 'Saving must retain the editable workspace project');
+  f.user('把刚保存的模板主色改成红色');
+  const next = await f.step();
+  const context = next.messages.find(message => message.source.kind === 'dsh-ppt-composer');
+  assert(context?.content.some(block => block.type === 'text' && block.text.includes('template_authoring:')),
+    'The next chat turn must retain authoritative template authoring context');
+  assert(next.messages.some(message => message.source.kind === 'skill-invocation' && message.source.name === 'dsh-ppt-template'),
+    'The template authoring skill must be available for saved-template revisions');
+});
+
 test('guided template preparation previews, saves an immutable native source, and reuses it', { timeout: 180000 }, async t => {
   const f = await fixture(t);
   await f.project();
