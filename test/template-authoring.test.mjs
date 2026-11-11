@@ -16,6 +16,98 @@ import { normalizeTemplateAuthoring } from '../lib/template-authoring.js';
 import { AuthoredTemplateLibrary } from '../lib/authored-templates.js';
 import { MAX_TEMPLATE_DESIGN_BYTES, parseTemplateDesign } from '../lib/template-design.js';
 
+test('a content update between source capture and checkout cannot publish a mixed template copy', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Original two-page template' });
+  const first = await f.request('template/authoring-state');
+  const saved = await f.request('template/authoring-save', { ...first, name: 'Original two-page template' });
+  await f.request('template/select', { templateId: saved.templateId, mode: 'ppt' }, 'reader');
+  const design = designSpec(); design.layouts = design.layouts.slice(0, 1);
+  await writeFile(path.join(f.workspace, 'template/deck.pptd'), 'version: v2\ntitle: Updated one-page template\nsize: [960, 540]\npages: [pages/cover.page]\n');
+  await writeFile(path.join(f.workspace, 'template/template-design.json'), JSON.stringify(design));
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Updated one-page template' });
+  const review = await f.request('template/authoring-state');
+  const library = f.service.store.personalTemplates, readSnapshot = library.readSnapshot.bind(library);
+  let injected = false;
+  library.readSnapshot = async id => {
+    const snapshot = await readSnapshot(id);
+    if (!injected && id === saved.templateId) {
+      injected = true;
+      await f.request('template/authoring-save', { ...review, name: 'Updated one-page template' });
+    }
+    return snapshot;
+  };
+  await assert.rejects(f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'mixed-copy' }, 'reader'), /原模板已更新/);
+  assert(injected, 'The content update must occur after the old source snapshot was captured');
+  assert(!(await readdir(f.workspace)).includes('mixed-copy'), 'A stale checkout must not leave a mixed published directory');
+  library.readSnapshot = readSnapshot;
+  const copied = await f.run('ppt_template_create_project', { template_id: saved.templateId, output_directory: 'current-copy' }, 'reader');
+  assert.equal(copied.slideCount, 1);
+  assert.match(await readFile(path.join(f.workspace, 'current-copy/deck.pptd'), 'utf8'), /Updated one-page template/);
+});
+
+test('page and reference reads retain one complete revision across a concurrent template update', { timeout: 180000 }, async t => {
+  for (const tool of ['ppt_get_template_pages', 'ppt_get_template_reference']) {
+    const f = await fixture(t);
+    await f.project();
+    await f.run('ppt_template_prepare', { project_path: 'template', name: 'Original two-page template' });
+    const first = await f.request('template/authoring-state');
+    const saved = await f.request('template/authoring-save', { ...first, name: 'Original two-page template' });
+    await f.request('template/select', { templateId: saved.templateId, mode: 'ppt' }, 'reader');
+    const design = designSpec(); design.layouts = [{ ...design.layouts[0], name: 'Updated single cover' }];
+    await writeFile(path.join(f.workspace, 'template/deck.pptd'), 'version: v2\ntitle: Updated one-page template\nsize: [960, 540]\npages: [pages/cover.page]\n');
+    await writeFile(path.join(f.workspace, 'template/template-design.json'), JSON.stringify(design));
+    await f.run('ppt_template_prepare', { project_path: 'template', name: 'Updated one-page template' });
+    const review = await f.request('template/authoring-state');
+    const library = f.service.store.personalTemplates, readSnapshot = library.readSnapshot.bind(library);
+    let injected = false;
+    library.readSnapshot = async id => {
+      const snapshot = await readSnapshot(id);
+      if (!injected && id === saved.templateId) {
+        injected = true;
+        await f.request('template/authoring-save', { ...review, name: 'Updated one-page template' });
+      }
+      return snapshot;
+    };
+    const args = { template_id: saved.templateId, ...(tool === 'ppt_get_template_pages' ? { slide_numbers: [1, 2] } : {}) };
+    const result = await f.run(tool, args, 'reader');
+    assert(injected, 'The concurrent update must occur after snapshot resolution');
+    const pages = tool === 'ppt_get_template_pages' ? result : result.pageContracts;
+    assert.equal(pages.length, 2, tool);
+    assert.equal(pages[1].sourceTitle, '指标结论', tool);
+    if (tool === 'ppt_get_template_pages') assert.match(pages[1].pptdLayoutReference, /示例数据 42/);
+    else assert.equal(result.templateName, 'Original two-page template');
+    library.readSnapshot = readSnapshot;
+    const current = await f.run(tool, { template_id: saved.templateId }, 'reader');
+    const currentPages = tool === 'ppt_get_template_pages' ? current : current.pageContracts;
+    assert.equal(currentPages.length, 1, tool);
+    assert.equal(currentPages[0].sourceTitle, 'Updated single cover', tool);
+  }
+});
+
+test('a deleted legacy saved template cannot block the next chat turn or cancellation', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Legacy saved template' });
+  const review = await f.request('template/authoring-state');
+  const saved = await f.request('template/authoring-save', { ...review, name: 'Legacy saved template' });
+  const state = await f.service.store.readState('session-a');
+  await f.service.store.writeState({ ...state, templateAuthoring: {
+    phase: 'saved', workflowId: saved.workflowId, revision: saved.revision, guideSent: true,
+    templateId: saved.templateId, name: saved.name,
+  } });
+  await f.service.store.personalTemplates.remove('other', saved.templateId);
+  f.user('退出模板制作，改为普通 PPT');
+  const step = await f.step();
+  assert.equal(step.kind, 'enter');
+  const authoring = await f.request('template/authoring-state');
+  assert.equal(authoring.templateId, saved.templateId, 'Keep the missing legacy identity until an explicit recovery or cancellation');
+  assert.deepEqual(authoring.origin, { kind: 'new' }, 'A deleted entry must not gain a fabricated version binding');
+  assert.deepEqual(await f.run('ppt_template_cancel', { workflow_id: saved.workflowId }), { cancelled: true });
+  assert.equal(await f.request('template/authoring-state'), null);
+});
+
 function designSpec() {
   return {
     version: 1, purpose: '技术团队向管理层汇报进度与风险',
@@ -171,7 +263,7 @@ test('guided template preparation previews, saves an immutable native source, an
   assert.deepEqual(await readFile(path.join(f.workspace, 'reused/assets/brand.png')), asset);
   await f.step();
   const active = f.agentFor('session-a').session.deriveMessages();
-  assert(!active.some(message => message.source.kind === 'skill-invocation' && message.source.name === 'dsh-ppt-template'), 'Saved authoring retires the template-specific Skill');
+  assert(active.some(message => message.source.kind === 'skill-invocation' && message.source.name === 'dsh-ppt-template'), 'Saved authoring retains the template-specific Skill');
   await f.request('template/authoring-exit', { workflowId: review.workflowId });
   assert.equal(await f.request('template/authoring-state'), null);
   assert((await f.request('state')).templates.some(item => item.id === saved.templateId));
@@ -283,8 +375,117 @@ test('save retries recover after draft publication but failed session persistenc
   assert.equal((await f.request('template/authoring-state')).phase, 'review');
   assert.equal((await f.request('template/authoring-preview', { ...review, page: 1 })).page, 1, 'Recovery review can still display the published image');
   const saved = await f.request('template/authoring-save', { ...review, name: 'Recovery' });
-  assert.equal(saved.templateId, review.templateId);
+  assert.equal(saved.origin.base.templateId, saved.templateId);
+  assert.notEqual(saved.templateId, review.templateId, 'A new authored copy receives a logical identity independent of its content');
   assert.equal((await f.request('state')).templates.filter(template => template.id === saved.templateId).length, 1);
+});
+
+test('reopening captures the source version, preserves local edits, and binds legacy saved workflows before revision', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Original' });
+  const review = await f.request('template/authoring-state');
+  const saved = await f.request('template/authoring-save', { ...review, name: 'Original' });
+  const authoring = f.service.templateAuthoring, library = f.service.store.personalTemplates;
+  await f.request('template/select', { templateId: 'dsh-blue-professional', mode: 'ppt' }, 'editor');
+  const started = await authoring.start('editor', saved.templateId);
+  await library.update('other', saved.templateId, { name: 'Renamed elsewhere' });
+  const staleDirectory = path.join(f.workspace, 'stale');
+  await mkdir(staleDirectory);
+  await assert.rejects(authoring.copySource('editor', { templateId: saved.templateId, projectPath: 'stale' },
+    base => library.checkout(base, staleDirectory)), /已更新/);
+  assert.equal((await f.request('template/authoring-state', {}, 'editor')).workflowId, started.workflowId);
+  assert.deepEqual(await readdir(staleDirectory), []);
+  await authoring.exit('editor', started.workflowId);
+
+  const output = path.join(f.workspace, 'edit-original');
+  await mkdir(output);
+  const editing = await authoring.copySource('editor', { templateId: saved.templateId, projectPath: 'edit-original', turnId: 'edit-turn' },
+    base => library.checkout(base, output));
+  assert.deepEqual(await readFile(path.join(output, 'template-design.json')), await readFile(path.join(f.workspace, 'template/template-design.json')));
+  assert.deepEqual(await readFile(path.join(output, 'pages/data.page')), await readFile(path.join(f.workspace, 'template/pages/data.page')));
+  await writeFile(path.join(output, 'local-notes.txt'), 'Keep this unfinished work');
+  assert.deepEqual(await authoring.copySource('editor', { templateId: saved.templateId, projectPath: 'ignored-output' },
+    () => { throw new Error('An existing workspace must not be copied again'); }), editing);
+  assert.equal((await f.request('state', {}, 'editor')).selectedTemplateId, 'dsh-blue-professional');
+  await authoring.exit('editor', editing.workflowId);
+  assert.equal((await library.readRecord(saved.templateId)).version, editing.origin.base.version);
+  assert.equal(await readFile(path.join(output, 'local-notes.txt'), 'utf8'), 'Keep this unfinished work');
+
+  const state = await f.service.store.readState('legacy');
+  await f.service.store.writeState({ ...state, templateAuthoring: {
+    phase: 'saved', workflowId: saved.workflowId, revision: saved.revision, guideSent: true,
+    templateId: saved.templateId, name: saved.name,
+  } });
+  const legacy = await authoring.revise('legacy', 'legacy-turn');
+  assert.equal(legacy.phase, 'creating');
+  assert.deepEqual(legacy.origin, editing.origin, 'Raw persisted saved state must capture the actual catalog version before losing its templateId');
+  const legacyOutput = path.join(f.workspace, 'legacy-edit');
+  await mkdir(legacyOutput);
+  const continued = await authoring.copySource('legacy', { templateId: saved.templateId, projectPath: 'legacy-edit' },
+    base => library.checkout(base, legacyOutput));
+  assert.equal(continued.workflowId, legacy.workflowId);
+  assert.deepEqual(await readFile(path.join(legacyOutput, 'pages/data.page')), await readFile(path.join(f.workspace, 'template/pages/data.page')));
+});
+
+test('existing authoring saves to the stable original and leaves a conflicting review available as a copy', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Original' });
+  const first = await f.request('template/authoring-state');
+  const saved = await f.request('template/authoring-save', { ...first, name: 'Original' });
+  const library = f.service.store.personalTemplates, authoring = f.service.templateAuthoring;
+  const copyDirectory = path.join(f.workspace, 'other-editor');
+  await mkdir(copyDirectory);
+  await authoring.copySource('editor-b', { templateId: saved.templateId, projectPath: 'other-editor' }, base => library.checkout(base, copyDirectory));
+  const file = path.join(f.workspace, 'template/pages/data.page');
+  const page = JSON.parse(await readFile(file, 'utf8'));
+  page.elements[0].content.text = 'Updated by the first editor';
+  await writeFile(file, JSON.stringify(page));
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Updated original' });
+  const changed = await f.request('template/authoring-state');
+  assert.deepEqual(changed.origin, saved.origin);
+  const updated = await f.request('template/authoring-save', { ...changed, name: 'Updated original' });
+  assert.equal(updated.templateId, saved.templateId);
+  assert.notEqual(updated.origin.base.version, saved.origin.base.version);
+  assert.deepEqual(await f.request('template/authoring-save', { ...changed, name: 'Updated original' }), updated,
+    'An original retry must retain its submitted base instead of using the new saved version');
+  await f.run('ppt_template_prepare', { project_path: 'other-editor', name: 'Other edit' }, 'editor-b');
+  const conflict = await f.request('template/authoring-state', {}, 'editor-b');
+  await assert.rejects(f.request('template/authoring-save', { ...conflict, name: 'Other edit' }, 'editor-b'), /已更新/);
+  assert.equal((await f.request('template/authoring-preview', { ...conflict, page: 1 }, 'editor-b')).page, 1);
+  const copied = await f.request('template/authoring-save', { ...conflict, name: 'Other edit', destination: 'copy' }, 'editor-b');
+  assert.notEqual(copied.templateId, saved.templateId);
+  assert.equal((await library.list()).length, 2);
+  assert.deepEqual(await readFile(path.join(await library.projectSource(saved.templateId), 'pages/data.page')), await readFile(file));
+});
+
+test('an original save with failed session persistence retries exactly after later rename and deletion', { timeout: 180000 }, async t => {
+  const f = await fixture(t);
+  await f.project();
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Original' });
+  const first = await f.request('template/authoring-state');
+  const saved = await f.request('template/authoring-save', { ...first, name: 'Original' });
+  await f.run('ppt_template_prepare', { project_path: 'template', name: 'Committed update' });
+  const review = await f.request('template/authoring-state');
+  const store = f.service.store, library = store.personalTemplates, writeState = store.writeState.bind(store);
+  let failed = false;
+  store.writeState = async state => {
+    if (!failed && state.templateAuthoring?.phase === 'saved') { failed = true; throw new Error('session persistence failed'); }
+    return writeState(state);
+  };
+  await assert.rejects(f.request('template/authoring-save', { ...review, name: 'Committed update' }), /session persistence failed/);
+  const committed = await library.savedDraft('session-a', review.draftId);
+  await library.update('other', saved.templateId, { name: 'A later rename' });
+  await library.remove('other', saved.templateId);
+  const recovered = await f.request('template/authoring-save', { ...review, name: 'Committed update' });
+  assert.equal(recovered.templateId, saved.templateId);
+  assert.equal(recovered.name, committed.name);
+  assert.deepEqual(recovered.origin.base, { templateId: committed.id, version: committed.version });
+  assert.deepEqual(await f.request('template/authoring-save', { ...review, name: 'Committed update' }), recovered);
+  await assert.rejects(f.request('template/authoring-save', { ...review, name: 'Different' }), /其他名称/);
+  await assert.rejects(f.request('template/authoring-save', { ...review, name: 'Committed update', destination: 'copy' }), /其他保存目标/);
+  assert.deepEqual(await library.list(), [], 'A historical retry must not resurrect a deleted template');
 });
 
 test('native template boundaries reject invalid layouts, foreign paths and symbolic links', async t => {
@@ -305,7 +506,7 @@ test('persisted authoring state keeps only valid workflow fields', () => {
   assert.equal(normalizeTemplateAuthoring({ workflowId, revision: 1, phase: 'review' }), undefined);
   assert.equal(normalizeTemplateAuthoring({ workflowId, revision: -1, phase: 'creating' }), undefined);
   assert.deepEqual(normalizeTemplateAuthoring({ workflowId, revision: 1, phase: 'creating', guideSent: true, projectPath: '../escape', secret: 'drop' }),
-    { workflowId, revision: 1, guideSent: true, phase: 'creating' });
+    { workflowId, revision: 1, guideSent: true, origin: { kind: 'new' }, phase: 'creating' });
 });
 
 test('each model step receives the current template and authoring context without duplicating Skills', async t => {
@@ -417,7 +618,7 @@ test('a missing unsaved draft cannot claim an unrelated saved template with iden
   assert.equal(second.templateId, first.templateId);
   await f.service.store.personalTemplates.cancel('session-a', second.draftId);
   await assert.rejects(f.request('template/authoring-save', { ...second, name: 'Should not save' }), /ENOENT/);
-  await assert.rejects(f.request('template/authoring-preview', { ...second, page: 1 }), /ENOENT/);
+  await assert.rejects(f.request('template/authoring-preview', { ...second, page: 1 }), /回执不存在/);
   assert.equal((await f.request('template/authoring-state')).phase, 'review');
 });
 
@@ -649,7 +850,7 @@ test('save revalidates optional draft guidance before admitting a duplicate or n
   await f.project();
   await f.run('ppt_template_prepare', { project_path: 'template', name: 'Original design' });
   const original = await f.request('template/authoring-state');
-  await f.request('template/authoring-save', { ...original, name: 'Original design' });
+  const originalSaved = await f.request('template/authoring-save', { ...original, name: 'Original design' });
   await f.run('ppt_template_prepare', { project_path: 'template', name: 'Duplicate review' });
   const duplicate = await f.request('template/authoring-state');
   assert.equal(duplicate.templateId, original.templateId);
@@ -658,8 +859,8 @@ test('save revalidates optional draft guidance before admitting a duplicate or n
   await writeFile(guide, JSON.stringify({ ...designSpec(), layouts: [designSpec().layouts[0]] }));
   await assert.rejects(f.request('template/authoring-save', { ...duplicate, name: 'Invalid review' }), /一一对应/);
   assert.equal((await f.request('template/authoring-state')).phase, 'review');
-  assert.equal((await f.service.store.personalTemplates.readRecord(original.templateId)).name, 'Original design');
+  assert.equal((await f.service.store.personalTemplates.readRecord(originalSaved.templateId)).name, 'Original design');
   await writeFile(guide, bytes);
   const saved = await f.request('template/authoring-save', { ...duplicate, name: 'Duplicate review' });
-  assert.equal(saved.templateId, original.templateId);
+  assert.equal(saved.templateId, originalSaved.templateId);
 });

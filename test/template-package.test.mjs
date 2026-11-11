@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile, cp, symlink } from 'node:fs/promises';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile, cp, symlink, rename } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -15,7 +15,8 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-package-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const library = new PersonalTemplateLibrary({ root, recordAudit: async () => {} });
+  const library = new PersonalTemplateLibrary({ root, recordAudit: async () => {},
+    writeJson: async (file, value) => { const temporary = `${file}.tmp`; await mkdir(path.dirname(file), { recursive: true }); await writeFile(temporary, JSON.stringify(value)); await rename(temporary, file); } });
   return { root, library };
 }
 async function packageFixture({ legacy = false, absent = false, title = 'Shared template' } = {}) {
@@ -234,4 +235,159 @@ test('SVG external resources, CSS escapes, executable elements and invalid embed
     await assert.rejects(library.importPackage('a', shared), undefined, fragment);
   }
   assert.deepEqual(await library.list(), []);
+});
+
+
+async function reviewDraft(library, snapshot, sessionId = 'editor') {
+  const draftId = randomUUID(), directory = await library.directory('drafts', draftId);
+  for (const [file, bytes] of snapshot.files) {
+    const target = path.join(directory, file === 'original/source.pptx' ? 'source.pptx' : file);
+    await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, bytes);
+  }
+  const profile = snapshot.metadata.templateProfile;
+  const record = { ...snapshot.metadata, id: `personal-${snapshot.fingerprint}`, sha256: snapshot.fingerprint,
+    origin: 'personal', authoringKind: snapshot.metadata.sourceKind === 'native-pptd' ? 'native-pptd' : undefined,
+    conversionVersion: 10, previewVersion: 11, createdAt: new Date().toISOString(), slideCount: snapshot.pageIndex.length, pageIndex: snapshot.pageIndex,
+    palette: profile?.palette, titleFontFace: profile?.typography.title.fontFace, bodyFontFace: profile?.typography.body.fontFace,
+    previewImages: Array(3).fill(`data:image/png;base64,${snapshot.files.get('preview/pages/page-1.png').toString('base64')}`) };
+  await writeFile(path.join(directory, 'template.json'), JSON.stringify(record));
+  await writeFile(path.join(directory, 'owner.json'), JSON.stringify({ session: hash(sessionId) }));
+  return draftId;
+}
+const originalDestination = record => ({ kind: 'original', base: { templateId: record.id, version: record.version } });
+
+test('content update keeps logical identity while source, design, preview and package readers follow its immutable revision', async t => {
+  const { library } = await fixture(t), before = await packageFixture(), after = await packageFixture({ title: 'Updated source' });
+  const png = await sharp({ create: { width: 960, height: 540, channels: 3, background: '#123456' } }).png().toBuffer();
+  after.snapshot.files.set('preview/pages/page-1.png', png);
+  const design = JSON.parse(after.snapshot.files.get('project/template-design.json')); design.purpose = 'Updated design';
+  after.snapshot.files.set('project/template-design.json', Buffer.from(JSON.stringify(design)));
+  const saved = (await library.importPackage('a', before.input)).template;
+  const oldSource = await library.projectSource(saved.id);
+  const draft = await reviewDraft(library, after.snapshot);
+  const updated = await library.commit('editor', draft, { name: 'Updated original', destination: originalDestination(saved) });
+  assert.equal(updated.template.id, saved.id); assert.notEqual(updated.base.version, saved.version);
+  assert.equal(updated.template.createdAt, saved.createdAt); assert.equal((await library.list()).length, 1);
+  assert.notEqual(await library.projectSource(saved.id), oldSource);
+  const currentSnapshot = await library.readSnapshot(saved.id);
+  assert.equal(currentSnapshot.record.version, updated.base.version);
+  assert.equal(currentSnapshot.projectPath, await library.projectSource(saved.id));
+  assert.equal(currentSnapshot.design.purpose, 'Updated design');
+  assert.deepEqual(await readFile(path.join(oldSource, 'deck.pptd')), before.snapshot.files.get('project/deck.pptd'));
+  assert.equal((await library.readDesign(saved.id)).purpose, 'Updated design');
+  assert.equal((await library.previewSavedPage('a', saved.id, 1)).preview, `data:image/png;base64,${png.toString('base64')}`);
+  const exported = decodeTemplatePackage(await library.exportPackage('a', saved.id));
+  assert.deepEqual(exported.files.get('project/deck.pptd'), after.snapshot.files.get('project/deck.pptd'));
+  assert.deepEqual(exported.files.get('project/template-design.json'), after.snapshot.files.get('project/template-design.json'));
+  const importedOld = await library.importPackage('a', before.input);
+  assert.equal(importedOld.outcome, 'imported'); assert.notEqual(importedOld.template.id, saved.id);
+  assert.equal((await library.importPackage('a', await library.exportPackage('a', saved.id))).template.id, saved.id);
+  const stage = await library.directory('test-checkout');
+  await library.checkout(updated.base, stage);
+  assert.deepEqual(await readFile(path.join(stage, 'deck.pptd')), after.snapshot.files.get('project/deck.pptd'));
+  await assert.rejects(library.checkout({ templateId: saved.id, version: saved.version }, stage), /原模板已更新/);
+});
+
+test('explicit copies remain distinct even with identical bytes and updates still work at capacity', async t => {
+  const { library, root } = await fixture(t), { input, snapshot } = await packageFixture();
+  const saved = (await library.importPackage('a', input)).template;
+  const copy = await library.commit('editor', await reviewDraft(library, snapshot), { name: saved.name, destination: { kind: 'copy' } });
+  assert.notEqual(copy.template.id, saved.id); assert.equal((await library.list()).length, 2);
+  const savedRoot = path.join(root, 'personal-templates/saved');
+  for (let i = 0; i < 98; i++) {
+    const id = `personal-${i.toString(16).padStart(64, '0')}`;
+    await mkdir(path.join(savedRoot, id)); await writeFile(path.join(savedRoot, id, 'template.json'), JSON.stringify({ ...saved, id }));
+  }
+  assert.equal((await library.list()).length, 100);
+  const draft = await reviewDraft(library, snapshot);
+  await assert.rejects(library.commit('editor', draft, { name: 'Overflow copy', destination: { kind: 'copy' } }), /100/);
+  assert(await library.draft('editor', draft));
+  const updated = await library.commit('editor', draft, { name: 'Full-library update', destination: originalDestination(saved) });
+  assert.equal(updated.template.id, saved.id); assert.equal((await library.list()).length, 100);
+});
+
+test('concurrent editors and metadata changes conflict; deleted originals can only be saved as a copy', async t => {
+  const { library } = await fixture(t), { input, snapshot } = await packageFixture();
+  const saved = (await library.importPackage('a', input)).template;
+  const first = await reviewDraft(library, snapshot, 'first'), second = await reviewDraft(library, snapshot, 'second');
+  const request = { name: 'Changed', destination: originalDestination(saved) };
+  const results = await Promise.allSettled([library.commit('first', first, request), library.commit('second', second, request)]);
+  assert.equal(results[0].status, 'fulfilled'); assert.equal(results[1].status, 'rejected'); assert.match(results[1].reason.message, /原模板已更新/);
+  assert(await library.draft('second', second));
+  const current = await library.readRecord(saved.id);
+  await library.update('metadata-editor', saved.id, { name: 'Concurrent rename' });
+  await assert.rejects(library.commit('second', second, { name: 'Stale', destination: originalDestination(current) }), /原模板已更新/);
+  const latest = await library.readRecord(saved.id);
+  await library.remove('a', saved.id);
+  await assert.rejects(library.commit('second', second, { name: 'Deleted', destination: originalDestination(latest) }), /原模板已删除/);
+  const copy = await library.commit('second', second, { name: 'Retained work', destination: { kind: 'copy' } });
+  assert.notEqual(copy.template.id, saved.id); assert.equal((await library.list()).length, 1);
+});
+
+test('a failed manifest publication keeps the old source and preview visible and retry publishes the reserved revision', async t => {
+  const { library, root } = await fixture(t), before = await packageFixture(), after = await packageFixture({ title: 'New revision' });
+  const saved = (await library.importPackage('a', before.input)).template;
+  const draft = await reviewDraft(library, after.snapshot), request = { name: 'Changed', destination: originalDestination(saved) };
+  const writeJson = library.store.writeJson.bind(library.store);
+  let fail = true;
+  library.store.writeJson = async (file, value) => { if (fail && file === path.join(root, 'personal-templates/saved', saved.id, 'template.json')) { fail = false; throw new Error('manifest interrupted'); } return writeJson(file, value); };
+  await assert.rejects(library.commit('editor', draft, request), /manifest interrupted/);
+  assert.equal((await library.readRecord(saved.id)).version, saved.version);
+  assert.deepEqual(await readFile(path.join(await library.projectSource(saved.id), 'deck.pptd')), before.snapshot.files.get('project/deck.pptd'));
+  assert.equal((await library.previewPage('editor', draft, 1)).page, 1);
+  const updated = await library.commit('editor', draft, request);
+  assert.equal(updated.template.id, saved.id);
+  assert.deepEqual(await library.commit('editor', draft, request), updated);
+  assert.equal((await readdir(path.join(root, 'personal-templates/saved', saved.id, 'revisions'))).length, 1);
+});
+
+test('pending receipts reconcile before later metadata writes or deletion and exact retries return historical results', async t => {
+  const { library } = await fixture(t), { snapshot } = await packageFixture();
+  const draft = await reviewDraft(library, snapshot), request = { name: 'First committed name', destination: { kind: 'copy' } };
+  const writeJson = library.store.writeJson.bind(library.store);
+  let fail = true;
+  library.store.writeJson = async (file, value) => { if (fail && file.includes('commit-receipts') && value.status === 'committed') { fail = false; throw new Error('receipt interrupted'); } return writeJson(file, value); };
+  await assert.rejects(library.commit('editor', draft, request), /receipt interrupted/);
+  const original = (await library.list())[0]; assert.equal(original.name, request.name);
+  const restarted = new PersonalTemplateLibrary(library.store);
+  await restarted.update('a', original.id, { name: 'Later name' });
+  await restarted.remove('a', original.id);
+  const recovered = await restarted.commit('editor', draft, request);
+  assert.equal(recovered.template.name, request.name); assert.equal(recovered.template.id, original.id);
+  assert.equal(recovered.base.version, original.version); assert.deepEqual(await restarted.list(), []);
+  await assert.rejects(restarted.commit('editor', draft, { ...request, name: 'Changed retry' }), /其他名称或保存目标/);
+  await assert.rejects(restarted.commit('editor', draft, { name: request.name, destination: originalDestination(original) }), /其他名称或保存目标/);
+});
+
+test('an unpublished original attempt can become a copy after the original changes', async t => {
+  const { library, root } = await fixture(t), { input, snapshot } = await packageFixture();
+  const saved = (await library.importPackage('a', input)).template;
+  const draft = await reviewDraft(library, snapshot), request = { name: 'Unpublished original', destination: originalDestination(saved) };
+  const writeJson = library.store.writeJson.bind(library.store);
+  let fail = true;
+  library.store.writeJson = async (file, value) => {
+    if (fail && file === path.join(root, 'personal-templates/saved', saved.id, 'template.json')) { fail = false; throw new Error('manifest interrupted'); }
+    return writeJson(file, value);
+  };
+  await assert.rejects(library.commit('editor', draft, request), /manifest interrupted/);
+  await library.update('other', saved.id, { name: 'Another writer' });
+  await assert.rejects(library.commit('editor', draft, request), /原模板已更新/);
+  const copied = await library.commit('editor', draft, { name: 'Retained draft', destination: { kind: 'copy' } });
+  assert.notEqual(copied.template.id, saved.id);
+  assert.equal((await library.readRecord(saved.id)).name, 'Another writer');
+  assert.equal((await library.list()).length, 2);
+});
+
+test('interruption immediately after pending receipt persistence reserves one copy identity across restart', async t => {
+  const { library, root } = await fixture(t), { snapshot } = await packageFixture();
+  const draft = await reviewDraft(library, snapshot), request = { name: 'Reserved copy', destination: { kind: 'copy' } };
+  const writeJson = library.store.writeJson.bind(library.store); let fail = true;
+  library.store.writeJson = async (file, value) => { await writeJson(file, value); if (fail && value.status === 'pending') { fail = false; throw new Error('process interrupted'); } };
+  await assert.rejects(library.commit('editor', draft, request), /process interrupted/);
+  assert.deepEqual(await library.list(), []);
+  const receiptFile = (await readdir(path.join(root, 'personal-templates/commit-receipts')))[0];
+  const pending = JSON.parse(await readFile(path.join(root, 'personal-templates/commit-receipts', receiptFile)));
+  const restarted = new PersonalTemplateLibrary(library.store);
+  const saved = await restarted.commit('editor', draft, request);
+  assert.equal(saved.template.id, pending.template.id); assert.equal((await library.list()).length, 1);
 });

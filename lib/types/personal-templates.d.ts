@@ -12,18 +12,25 @@ export declare const MAX_PERSONAL_TEMPLATE_SLIDES = 200;
 export declare const MAX_PERSONAL_TEMPLATE_HTTP_BODY_BYTES: number;
 export type PersonalTemplateRecord = OfficeTemplate & {
     readonly origin: 'personal';
+    readonly version: string;
+    readonly contentRevision?: string;
+    readonly lastCommitId?: string;
     readonly slideCount: number;
     readonly createdAt: string;
     readonly conversionVersion: number;
     readonly previewVersion: number;
     readonly pageIndex: readonly { slideNumber: number; file: string }[];
 };
+export type TemplateBase = Readonly<{ templateId: string; version: string }>;
+export type PersonalTemplateDraftRecord = Omit<PersonalTemplateRecord, 'version' | 'contentRevision' | 'lastCommitId'>;
+export type TemplateSaveDestination = { readonly kind: 'copy' } | { readonly kind: 'original'; readonly base: TemplateBase };
+export type TemplateCommitResult = Readonly<{ template: PersonalTemplateRecord; base: TemplateBase }>;
 export type PersonalTemplatePrepareInput = (
     { readonly uploadId: string } | { readonly fileName: string; readonly base64: string }
 ) & { readonly requestId?: string; readonly draftId?: string };
 export type PersonalTemplatePrepareResult =
     | { readonly duplicate: true; readonly template: PersonalTemplateRecord }
-    | { readonly draftId: string; readonly template: PersonalTemplateRecord; readonly preview: string };
+    | { readonly draftId: string; readonly template: PersonalTemplateDraftRecord; readonly preview: string };
 export interface PersonalTemplatePagePreview { readonly page: number; readonly preview: string; }
 export interface PersonalTemplateProgress {
     readonly total: number;
@@ -41,8 +48,9 @@ export declare class PersonalTemplateLibrary {
     directory(...parts: string[]): Promise<string>;
     checkedFile(directory: string, file: string): Promise<string>;
     readRecord(id: string): Promise<PersonalTemplateRecord>;
+    readSnapshot(id: string): Promise<{ record: PersonalTemplateRecord; projectPath: string; design: TemplateDesign | undefined }>;
     readDesign(id: string): Promise<TemplateDesign | undefined>;
-    savedDraft(sessionId: string, draftId: string, id: string): Promise<PersonalTemplateRecord>;
+    savedDraft(sessionId: string, draftId: string): Promise<PersonalTemplateRecord>;
     catalogLocked<T>(work: () => Promise<T>): Promise<T>;
     list(): Promise<PersonalTemplateRecord[]>;
     uploadStart(sessionId: string, input: PersonalTemplateUploadInput): ReturnType<PersonalTemplateUploads['start']>;
@@ -56,6 +64,9 @@ export declare class PersonalTemplateLibrary {
     previewSavedPage(sessionId: string, templateId: string, page: number): Promise<PersonalTemplatePagePreview>;
     importPackage(sessionId: string, input: { fileName: string; base64: string }, signal?: AbortSignal): Promise<{ outcome: 'imported' | 'existing'; template: PersonalTemplateRecord }>;
     exportPackage(sessionId: string, templateId: string): Promise<{ fileName: string; base64: string }>;
+    checkout(base: TemplateBase, output: string, signal?: AbortSignal): Promise<PersonalTemplateRecord>;
+    commit(sessionId: string, draftId: string, input: { name: string; destination: TemplateSaveDestination }): Promise<TemplateCommitResult>;
+    previewSavedDraft(sessionId: string, draftId: string, page: number): Promise<PersonalTemplatePagePreview>;
     save(sessionId: string, draftId: string, name: string): Promise<PersonalTemplateRecord>;
     cancel(sessionId: string, draftId: string): Promise<{ draftId: string }>;
     rename(sessionId: string, id: string, name: string): Promise<PersonalTemplateRecord>;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -91,9 +91,15 @@ test('custom PPTX templates upload, preview, persist, copy and export through th
   const state = await restored.request('state', {}, 'session-b');
   assert.equal(state.selectedTemplateId, saved.id);
   assert(state.templates.some(template => template.id === saved.id));
+  const metadataFile = path.join(f.scratch, 'storage/personal-templates/saved', saved.id, 'template.json');
+  const legacy = JSON.parse(await readFile(metadataFile, 'utf8'));
+  delete legacy.templateProfile;
+  await writeFile(metadataFile, JSON.stringify(legacy));
   const duplicate = await restored.request('template/prepare', { input: { fileName: 'Same.pptx', base64: bytes.toString('base64') } });
   assert.equal(duplicate.duplicate, true);
   assert.equal(duplicate.template.id, saved.id);
+  assert.notEqual(duplicate.template.version, legacy.version, 'The owner publishes profile enrichment returned by the import worker');
+  assert.deepEqual(JSON.parse(await readFile(metadataFile, 'utf8')).templateProfile, duplicate.template.templateProfile);
   await restored.request('template/update', { templateId: saved.id, name: '年度报告', description: '公司报告模板' });
   assert.equal((await restored.request('state')).templates.find(template => template.id === saved.id).description, '公司报告模板');
   const index = await restored.run('ppt_get_template_pages', { template_id: saved.id });

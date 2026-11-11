@@ -141,6 +141,7 @@ export type OfficeTemplateCategory = 'strategy' | 'business' | 'work' | 'promoti
 /** Selectable presentation theme, page references, and model-facing visual guidance. */
 export interface OfficeTemplate {
     readonly authoringKind?: 'native-pptd';
+    readonly version?: string;
     readonly templateSamples?: import('./personal-template-samples.js').PersonalTemplateSamples;
     readonly templateProfile?: import('./personal-template-profile.js').PersonalTemplateProfile;
     readonly id: OfficeTemplateId;
@@ -463,8 +464,10 @@ export interface OfficeDeckPreview {
         readonly bullets: readonly string[];
     }[];
 }
+export type TemplateAuthoringOrigin = { readonly kind: 'new' } | { readonly kind: 'existing'; readonly base: import('./personal-templates.js').TemplateBase };
 /** Persisted conversational template authoring with an immutable reviewed revision. */
 export type TemplateAuthoringState = {
+    readonly origin: TemplateAuthoringOrigin;
     readonly workflowId: string;
     readonly revision: number;
     readonly guideSent: boolean;
@@ -474,7 +477,7 @@ export type TemplateAuthoringState = {
     | { readonly phase: 'preparing'; readonly projectPath: string; readonly name: string; readonly description?: string }
     | { readonly phase: 'failed' | 'cancelled'; readonly projectPath: string; readonly name: string; readonly description?: string; readonly error?: string }
     | { readonly phase: 'review'; readonly projectPath: string; readonly name: string; readonly description?: string; readonly draftId: string; readonly templateId: string; readonly slideCount: number }
-    | { readonly phase: 'saved'; readonly templateId: string; readonly name: string }
+    | { readonly phase: 'saved'; readonly templateId: string; readonly name: string; readonly description?: string; readonly projectPath?: string; readonly lastSave?: { readonly draftId: string; readonly name: string; readonly destination: import('./personal-templates.js').TemplateSaveDestination } }
 );
 /** Session-local state rendered by the PPT view. */
 export interface OfficePptState {

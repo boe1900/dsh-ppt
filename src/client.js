@@ -461,12 +461,12 @@ window.__ModuleLoader__.load({
                 catch (error) { if (alive.current) setOperation({ kind: "error", message: error.message }); }
                 finally { foregroundBusy.current = false; }
             };
-            const startAuthoring = () => act(async () => {
+            const startAuthoring = templateId => act(async () => {
                 setSavedName(null);
-                const workflow = await props.client.call("template/authoring-start");
+                const workflow = await props.client.call("template/authoring-start", templateId ? { templateId } : {});
                 await refresh();
                 if (!alive.current || workflow.guideSent) return;
-                await props.sendGuide(props.t("authoring.starter"));
+                await props.sendGuide(props.t(templateId ? "authoring.editStarter" : "authoring.starter"));
                 await props.client.call("template/authoring-guided", { workflowId: workflow.workflowId });
                 await refresh();
             });
@@ -477,9 +477,9 @@ window.__ModuleLoader__.load({
             if (authoring?.phase === "review") return react.createElement(TemplateAuthoringPanel, {
                 key: props.sessionId, client: props.client, authoring, operation, running,
                 t: props.t, exit,
-                save: name => act(async () => {
+                save: (name, destination) => act(async () => {
                     const saved = await props.client.call("template/authoring-save", { workflowId: authoring.workflowId,
-                        revision: authoring.revision, draftId: authoring.draftId, name });
+                        revision: authoring.revision, draftId: authoring.draftId, name, destination });
                     if (!alive.current) return;
                     request.current++;
                     props.mode.setAuthoring(props.sessionId, saved);
@@ -506,9 +506,9 @@ window.__ModuleLoader__.load({
                     react.createElement("button", { type: "button", onClick: () => act(refresh) }, props.t("templates.retry"))),
                 guidePending && operation.kind !== "busy" && react.createElement("p", { role: "alert" },
                     props.t("authoring.guidePending"), operation.kind === "error" && ` ${operation.message}`, " ",
-                    react.createElement("button", { type: "button", disabled: running, onClick: startAuthoring,
-                        style: { border: 0, padding: "2px 0", background: "none", color: "inherit", font: "inherit", cursor: "pointer" } }, props.t("authoring.retryGuide"))),
-                savedName !== null && react.createElement("div", { className: "dsh-ppt-authoring-frame" },
+                    react.createElement("button", { type: "button", disabled: running,
+                        style: { border: 0, padding: "2px 0", background: "none", color: "inherit", font: "inherit", cursor: "pointer" }, onClick: () => startAuthoring(authoring.origin?.base?.templateId) }, props.t("authoring.retryGuide"))),
+                savedName !== null && authoring?.phase === "saved" && react.createElement("div", { className: "dsh-ppt-authoring-frame" },
                     react.createElement("style", null, AUTHORING_CSS),
                     react.createElement("div", { "data-template-authoring-feedback": "", className: "dsh-ppt-authoring-feedback" },
                         react.createElement("svg", { className: "dsh-ppt-authoring-success-icon", width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.75, "aria-hidden": true },
@@ -568,7 +568,10 @@ window.__ModuleLoader__.load({
             "authoring.review": "已生成 {count} 页模板，检查预览后保存。",
             "authoring.revise": "需要调整？直接在对话里告诉 AI，修改后会更新预览。",
             "authoring.save": "保存到自定义模板",
-            "authoring.saved": "「{name}」已保存。新建 PPT 对话，在「自定义」分类选择使用。",
+            "authoring.update": "更新原模板",
+            "authoring.saveCopy": "另存为",
+            "authoring.editStarter": "继续编辑 template_authoring 中指定的自定义模板。若已有 projectPath，请沿用当前工作区工程；否则调用 ppt_template_edit 创建独立编辑副本，不要修改模板库内部文件。先问我希望调整哪些内容。修改后调用 ppt_template_prepare 生成预览，我会选择更新原模板或另存为。",
+            "authoring.saved": "「{name}」已保存。可继续在对话里提出修改；新建 PPT 对话时可从「自定义」选择使用。",
 
 			"personal.selected": "已选中",
 			"personal.local": "保存在当前配置 · PPTX",
@@ -602,7 +605,8 @@ window.__ModuleLoader__.load({
 			"personal.packageImported": "已导入「{name}」。",
 			"personal.packageExisting": "「{name}」已在模板库中，保留现有模板。",
 			"personal.packageExported": "「{name}」已开始下载。",
-			"personal.edit": "编辑模板",
+			"personal.edit": "修改模板信息",
+            "personal.editContent": "编辑模板内容",
 			"personal.editTitle": "编辑自定义模板",
 			"personal.description": "模板描述",
 			"personal.descriptionPlaceholder": "描述模板的风格或适用场景（选填）",
@@ -699,7 +703,10 @@ window.__ModuleLoader__.load({
             "authoring.review": "{count} template pages are ready. Review them before saving.",
             "authoring.revise": "To revise, tell AI what to change in the conversation.",
             "authoring.save": "Save to custom templates",
-            "authoring.saved": "“{name}” is saved. Start a new PPT conversation and select it from Custom.",
+            "authoring.update": "Update original",
+            "authoring.saveCopy": "Save a copy",
+            "authoring.editStarter": "Continue editing the custom template in template_authoring. Reuse projectPath if present; otherwise use ppt_template_edit to create an isolated working copy. Never write inside the template library. Ask what I want to change, then prepare a new preview for Update original or Save a copy.",
+            "authoring.saved": "“{name}” is saved. Continue requesting changes here, or select it from Custom in a new PPT conversation.",
 
 			"personal.selected": "Selected",
 			"personal.local": "Saved in the current profile · PPTX",
@@ -733,7 +740,8 @@ window.__ModuleLoader__.load({
 			"personal.packageImported": "Imported “{name}”.",
 			"personal.packageExisting": "“{name}” is already in your library. Kept the existing template.",
 			"personal.packageExported": "Download started for “{name}”.",
-			"personal.edit": "Edit template",
+			"personal.edit": "Edit template details",
+            "personal.editContent": "Edit template content",
 			"personal.editTitle": "Edit custom template",
 			"personal.description": "Template description",
 			"personal.descriptionPlaceholder": "Describe its style or use cases (optional)",

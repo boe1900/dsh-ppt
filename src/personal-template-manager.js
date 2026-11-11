@@ -162,7 +162,7 @@ function TemplatePreviewCard({ template, selected, choose, client, t, disabled }
   const detailedPersonal = template.origin === 'personal' && client.bound === true;
   const slides=personalPreviewSlides(template);
   const count = detailedPersonal ? slides.length : staticPages.length;
-  const cacheKey=slide=>`${template.previewVersion ?? 0}:${slide}`;
+  const cacheKey=slide=>`${template.version ?? template.previewVersion ?? 0}:${slide}`;
   const src = detailedPersonal ? pages[cacheKey(slides[page])] : staticPages[page];
   async function load(next) {
     const slide=slides[next],key=cacheKey(slide);
@@ -181,8 +181,8 @@ function TemplatePreviewCard({ template, selected, choose, client, t, disabled }
     if (!open) return;
     load(0);
     return () => { request.current++; };
-  }, [open, template.previewVersion]);
-  react.useEffect(() => () => { request.current++; }, [client, template.id,template.previewVersion]);
+  }, [open, template.id, template.version, template.previewVersion]);
+  react.useEffect(() => () => { request.current++; }, [client, template.id, template.version, template.previewVersion]);
   return h('div', { className: 'ppt-preview-card' },
     h('style', null, TEMPLATE_VIEWER_CSS),
     h(TemplateCard, { template, selected, choose, disabled }),
@@ -190,7 +190,7 @@ function TemplatePreviewCard({ template, selected, choose, client, t, disabled }
       h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, 'aria-hidden': true },
         h('path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z' }),
         h('circle', { cx: 12, cy: 12, r: 3 }))),
-    open && h(TemplatePreviewViewer, { key: `${template.id}:${template.previewVersion ?? 0}`, title: template.name, page, count, navigate: load, close: () => setOpen(false), t, loading,
+    open && h(TemplatePreviewViewer, { key: `${template.id}:${template.version ?? template.previewVersion ?? 0}`, title: template.name, page, count, navigate: load, close: () => setOpen(false), t, loading,
       getThumbnail: index => detailedPersonal ? pages[cacheKey(slides[index])] : staticPages[index],
       loadThumbnail: detailedPersonal ? async index => (await client.call('template/preview-saved-page', { templateId: template.id, page: slides[index] })).preview : undefined,
       action: h('button', { type: 'button', className: 'ppt-preview-use', disabled, onClick: () => { if (!selected) choose(template); setOpen(false); } }, t('personal.useSame')) },
@@ -313,7 +313,7 @@ function PersonalTemplateManager({ client, mode, sessionId, state, choose, start
     !modal && operation.kind !== 'idle' && h('p', { className: 'personal-package-feedback', role: operation.kind === 'error' ? 'alert' : 'status' },
       operation.kind === 'busy' ? t(operation.action === 'import' ? 'personal.packageImporting' : 'personal.packageExporting') : operation.message),
     h('div', { className: OfficePptHero_module_css_default.templateGrid },
-      mutable && showPersonal && h('button', { type: 'button', className: 'personal-create', onClick: startAuthoring, disabled: busy || state.loading },
+      mutable && showPersonal && h('button', { type: 'button', className: 'personal-create', onClick: () => startAuthoring(), disabled: busy || state.loading },
         h('span', { 'aria-hidden': true, style: { fontSize: 26 } }, '✦'), h('span', null, t('personal.create')), h('small', null, t('authoring.entryHint'))),
       ...templates.map(template => h('div', { key: template.id, 'data-personal-card': template.id },
         h('div', { className: 'personal-frame' },
@@ -331,6 +331,7 @@ function PersonalTemplateManager({ client, mode, sessionId, state, choose, start
               disabled: busy || state.loading, onClick: () => setMenu(menu === template.id ? null : template.id) }, '⋯'),
             menu === template.id && h('div', { ref: menuRef, className: 'personal-menu', role: 'menu', 'aria-label': template.name },
               h('button', { type: 'button', role: 'menuitem', onClick: () => transfer('export', template) }, t('personal.packageExport')),
+              h('button', { type: 'button', role: 'menuitem', onClick: () => { setMenu(null); startAuthoring(template.id); } }, t('personal.editContent')),
               h('button', { type: 'button', role: 'menuitem', 'aria-label': t('personal.edit'), onClick: () => { setMenu(null); edit(template); } }, t('personal.edit')),
               h('button', { type: 'button', role: 'menuitem', 'aria-label': t('personal.delete'), onClick: () => { setMenu(null); setModal({ ...template, kind: 'delete' }); setOperation({ kind: 'idle' }); } }, t('personal.delete'))))))),
       ...builtInCards.map(card => react.cloneElement(card, { disabled: busy || card.props.disabled }))),
@@ -415,11 +416,13 @@ function TemplateAuthoringPanel({ client, authoring, operation, running, save, e
             h('small', { className: 'dsh-ppt-authoring-hint' }, t('authoring.revise'))),
           h('button', { type: 'button', className: 'dsh-ppt-authoring-button dsh-ppt-authoring-preview', onClick: () => setViewer(true) }, t('authoring.preview'))),
         preview.kind === 'error' && h('div', { className: 'dsh-ppt-authoring-notice' }, previewContent())),
-      h('form', { className: 'dsh-ppt-authoring-footer', onSubmit: event => { event.preventDefault(); if (preview.kind === 'ready' && !running && name.trim()) save(name); } },
+      h('form', { className: 'dsh-ppt-authoring-footer', onSubmit: event => { event.preventDefault(); if (preview.kind === 'ready' && !busy && !running && name.trim()) save(name, authoring.origin?.kind === 'existing' ? 'original' : 'copy'); } },
         h('label', { className: 'dsh-ppt-authoring-name' },
           h('span', null, t('personal.name')),
           h('input', { className: 'dsh-ppt-authoring-input', value: name, maxLength: 80, required: true, disabled: busy || running, onChange: event => setName(event.target.value) })),
-        h('button', { type: 'submit', className: 'dsh-ppt-authoring-button dsh-ppt-authoring-save', disabled: busy || running || preview.kind !== 'ready' || !name.trim() }, t('authoring.save'))),
+        h('div', { className: 'dsh-ppt-authoring-save-actions' },
+          authoring.origin?.kind === 'existing' && h('button', { type: 'button', className: 'dsh-ppt-authoring-button', disabled: busy || running || preview.kind !== 'ready' || !name.trim(), onClick: () => save(name, 'copy') }, t('authoring.saveCopy')),
+          h('button', { type: 'submit', className: 'dsh-ppt-authoring-button dsh-ppt-authoring-save', disabled: busy || running || preview.kind !== 'ready' || !name.trim() }, t(authoring.origin?.kind === 'existing' ? 'authoring.update' : 'authoring.save')))),
       viewer && h(TemplatePreviewViewer, { key: identity, title: authoring.name || t('authoring.preview'), page: page - 1, count: authoring.slideCount, navigate, close: () => setViewer(false), t, loading: preview.kind === 'loading',
         getThumbnail: index => index + 1 === page && preview.kind === 'ready' ? preview.src : undefined,
         loadThumbnail: async index => (await client.call('template/authoring-preview', { workflowId: authoring.workflowId, revision: authoring.revision, draftId: authoring.draftId, page: index + 1 })).preview }, previewContent())));
@@ -450,6 +453,7 @@ const AUTHORING_CSS = `
 .dsh-ppt-authoring-button:disabled{opacity:.4;cursor:default}
 .dsh-ppt-authoring-button:focus-visible,.dsh-ppt-authoring-thumbnail:focus-visible,.dsh-ppt-authoring-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#3569d4);outline-offset:2px}
 .dsh-ppt-authoring-footer{display:flex;align-items:center;flex:none;gap:12px;margin:0;padding:14px 24px;background:color-mix(in srgb,var(--dsw-alias-interactive-bg-hover,#f1f2f4) 45%,transparent);border-top:1px solid var(--dsw-alias-border-l2-darkmode-thin,#e5e5e5)}
+.dsh-ppt-authoring-save-actions{display:flex;flex:none;gap:8px}
 .dsh-ppt-authoring-name{display:flex;align-items:center;flex:1;min-width:0;gap:12px;font-size:13px;line-height:20px}
 .dsh-ppt-authoring-name>span{flex:none;white-space:nowrap;font-weight:500}
 .dsh-ppt-authoring-input{flex:1;min-width:0;width:100%;height:36px;padding:7px 12px;border:1px solid var(--dsw-alias-border-l4,#ccc);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-module-platform,var(--dsw-alias-bg-base,#fff));color:inherit;caret-color:var(--dsw-alias-state-business-primary,#3569d4);font:inherit}
@@ -461,7 +465,7 @@ const AUTHORING_CSS = `
 .dsh-ppt-authoring-notice:last-child{margin:12px 0 0}
 .dsh-ppt-authoring-notice p{margin:0 0 8px}
 @container dsh-ppt-authoring (max-width:656px){.dsh-ppt-authoring-header{padding:14px 12px 12px 18px}.dsh-ppt-authoring-title{font-size:15px;line-height:21px}.dsh-ppt-authoring-body{padding:14px 18px}.dsh-ppt-authoring-footer{padding:14px 18px}.dsh-ppt-authoring-review{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px}.dsh-ppt-authoring-thumbnail{grid-row:1/3;width:112px}.dsh-ppt-authoring-preview{grid-column:2;justify-self:start}}
-@container dsh-ppt-authoring (max-width:536px){.dsh-ppt-authoring-footer{flex-direction:column;align-items:stretch}.dsh-ppt-authoring-name{flex:none}.dsh-ppt-authoring-save{width:100%}.dsh-ppt-authoring-review{padding:12px;grid-template-columns:96px minmax(0,1fr)}.dsh-ppt-authoring-thumbnail{width:96px}}
+@container dsh-ppt-authoring (max-width:536px){.dsh-ppt-authoring-footer{flex-direction:column;align-items:stretch}.dsh-ppt-authoring-name{flex:none}.dsh-ppt-authoring-save-actions{width:100%}.dsh-ppt-authoring-save-actions>button{flex:1}.dsh-ppt-authoring-review{padding:12px;grid-template-columns:96px minmax(0,1fr)}.dsh-ppt-authoring-thumbnail{width:96px}}
 @container dsh-ppt-authoring (max-width:400px){.dsh-ppt-authoring-name{flex-direction:column;align-items:stretch;gap:6px}.dsh-ppt-authoring-review{grid-template-columns:1fr}.dsh-ppt-authoring-thumbnail{grid-row:auto;width:100%;max-width:192px}.dsh-ppt-authoring-preview{grid-column:auto}}
 @media(prefers-reduced-motion:reduce){.dsh-ppt-authoring-button{transition:none}}
 `;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile, cp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -82,7 +82,8 @@ test('saving within the library queue does not reacquire its catalog lock', { ti
   await mkdir(path.join(directory, 'project/pages'), { recursive: true });
   await writeFile(path.join(directory, 'project/deck.pptd'), 'version: v2\nsize: [960, 540]\npages: [pages/cover.page]\n');
   await writeFile(path.join(directory, 'project/pages/cover.page'), JSON.stringify({ elements: [] }));
-  assert.deepEqual(await library.save('session-a', draftId, 'Already saved'), saved.record);
+  await cp(path.join(directory, 'project'), path.join(saved.directory, 'project'), { recursive: true });
+  assert.deepEqual(await library.save('session-a', draftId, 'Already saved'), await library.readRecord(saved.id));
 });
 
 test('catalog keeps saved-root failures visible', async t => {

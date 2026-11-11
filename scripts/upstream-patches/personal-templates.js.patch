@@ -1,5 +1,5 @@
 diff --git a/lib/personal-templates.js b/lib/personal-templates.js
-index 1a126d4..10b989c 100644
+index 1a126d4..b1cf629 100644
 --- a/lib/personal-templates.js
 +++ b/lib/personal-templates.js
 @@ -9,6 +9,8 @@ import { prepareOfficeFontAccess } from './office-font-access.js';
@@ -11,7 +11,18 @@ index 1a126d4..10b989c 100644
  
  export const PERSONAL_TEMPLATE_CONVERSION_VERSION = 10;
  export const PERSONAL_TEMPLATE_PREVIEW_VERSION = 11;
-@@ -59,7 +61,9 @@ function conversionError(check, fileName, sha256) {
+@@ -21,6 +23,10 @@ const THUMBNAIL_LONG_EDGE = 720;
+ export const MAX_PERSONAL_TEMPLATE_HTTP_BODY_BYTES = 86 * 1024 * 1024;
+ const ID = /^personal-[a-f0-9]{64}$/;
+ const DRAFT = /^[a-f0-9-]{36}$/;
++const VERSION = /^(?:[a-f0-9]{64}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/;
++const COMMIT = /^[a-f0-9]{64}$/;
++const conflict = () => new Error('原模板已更新，请重新打开或另存为新模板');
++const baseOf = record => ({ templateId: record.id, version: record.version });
+ const hash = value => createHash('sha256').update(value).digest('hex');
+ const profileMetadata = templateProfile => ({templateProfile,palette:templateProfile.palette,
+   titleFontFace:templateProfile.typography.title.fontFace,bodyFontFace:templateProfile.typography.body.fontFace,
+@@ -59,7 +65,9 @@ function conversionError(check, fileName, sha256) {
  /** One library per host-owned Desktop profile; caller-supplied paths never select a library. */
  export class PersonalTemplateLibrary {
    tail = Promise.resolve();
@@ -21,7 +32,7 @@ index 1a126d4..10b989c 100644
    fontAccess;
    constructor(store, convert, writeSource, maxSlides = MAX_PERSONAL_TEMPLATE_SLIDES) {
      this.store = store;
-@@ -74,6 +78,11 @@ export class PersonalTemplateLibrary {
+@@ -74,6 +82,11 @@ export class PersonalTemplateLibrary {
      this.tail = pending;
      return pending;
    }
@@ -33,7 +44,7 @@ index 1a126d4..10b989c 100644
    async directory(...parts) {
      await mkdir(this.store.root, { recursive: true, mode: 0o700 });
      const target = path.join(this.root, ...parts);
-@@ -97,43 +106,72 @@ export class PersonalTemplateLibrary {
+@@ -97,43 +110,117 @@ export class PersonalTemplateLibrary {
    }
    async readRecord(id) {
      if (!ID.test(id)) throw new Error('个人模板标识无效');
@@ -45,7 +56,11 @@ index 1a126d4..10b989c 100644
      if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('模板目录无效');
 -    const record = JSON.parse(await readFile(await this.checkedFile(directory, 'template.json'), 'utf8'));
 -    if (record.id !== id || record.origin !== 'personal') throw new Error('模板记录无效');
-+    let record = JSON.parse(await readFile(await this.checkedFile(directory, 'template.json'), 'utf8'));
++    const bytes = await readFile(await this.checkedFile(directory, 'template.json'));
++    let record = JSON.parse(bytes.toString('utf8'));
++    if (record.version !== undefined && !VERSION.test(record.version)) throw new Error('模板版本无效');
++    record.version ??= hash(bytes);
++    const payload = await this.#payloadDirectory(directory, record);
 +    if (!ID.test(record.id) || (id !== undefined && record.id !== id) || record.origin !== 'personal') throw new Error('模板记录无效');
 +    if (!Number.isInteger(record.slideCount) || record.slideCount < 1 || record.slideCount > this.maxSlides
 +      || typeof record.createdAt !== 'string' || !Number.isFinite(Date.parse(record.createdAt))) throw new Error('模板记录无效');
@@ -60,10 +75,10 @@ index 1a126d4..10b989c 100644
 +    const invalidProfile = record.templateProfile !== undefined && !validPersonalTemplateProfile(record.templateProfile, record.pageIndex);
 +    if (invalidProfile && record.authoringKind !== 'native-pptd') throw new Error('模板结构索引无效，请重新导入模板');
 +    if (validateProject || invalidProfile) {
-+      const project = await this.#loadOwnedProject(path.join(directory, 'project'));
++      const project = await this.#loadOwnedProject(path.join(payload, 'project'));
 +      if (project.pages.length !== record.pageIndex.length || project.pages.some((page, index) => page.file !== record.pageIndex[index].file))
 +        throw new Error('模板工程与页面索引不一致');
-+      if (validateProject) await readTemplateDesign(path.join(directory, 'project'), project.pages);
++      if (validateProject) await readTemplateDesign(path.join(payload, 'project'), project.pages);
 +      if (invalidProfile) {
 +        const profile = extractPersonalTemplateProfile(project);
 +        if (!validPersonalTemplateProfile(profile, record.pageIndex)) throw new Error('模板结构索引生成失败，请检查模板工程');
@@ -73,6 +88,47 @@ index 1a126d4..10b989c 100644
      return record;
    }
 -  async list() {
++  async #payloadDirectory(directory, record) {
++    if (record.contentRevision === undefined) return directory;
++    if (!DRAFT.test(record.contentRevision)) throw new Error('模板内容版本无效');
++    let current = directory;
++    for (const part of ['revisions', record.contentRevision]) {
++      current = path.join(current, part);
++      const info = await lstat(current);
++      if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('模板内容目录无效');
++    }
++    return current;
++  }
++  async #recordPayload(record) {
++    return this.#payloadDirectory(path.join(this.root, 'saved', record.id), record);
++  }
++  async #availableId(preferred) {
++    const saved = await this.directory('saved');
++    let id = preferred;
++    while (!id || await exists(path.join(saved, id))) id = `personal-${hash(randomUUID())}`;
++    return id;
++  }
++  async #receipt(commitId) {
++    if (!COMMIT.test(commitId)) throw new Error('模板保存回执无效');
++    let receipt;
++    try { receipt = JSON.parse(await readFile(await this.checkedFile(path.join(this.root, 'commit-receipts'), `${commitId}.json`), 'utf8')); }
++    catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
++    if (!['pending', 'committed'].includes(receipt.status) || receipt.commitId !== commitId || !COMMIT.test(receipt.requestDigest)
++      || !ID.test(receipt.template?.id) || receipt.base?.templateId !== receipt.template.id || receipt.base.version !== receipt.template.version
++      || !VERSION.test(receipt.base.version)) throw new Error('模板保存回执无效');
++    return receipt;
++  }
++  async #writeReceipt(receipt) {
++    await this.store.writeJson(path.join(await this.directory('commit-receipts'), `${receipt.commitId}.json`), receipt);
++  }
++  async #reconcileRecord(record) {
++    if (record.lastCommitId === undefined) return;
++    const receipt = await this.#receipt(record.lastCommitId);
++    if (!receipt) throw new Error('模板保存回执缺失，请检查模板库');
++    if (receipt.status === 'committed') return;
++    if (receipt.template.id !== record.id || receipt.template.version !== record.version) throw new Error('模板保存回执与当前版本不一致');
++    await this.#writeReceipt({ ...receipt, status: 'committed' });
++  }
 +  list() {
 +    return this.catalogLocked(() => this.#readCatalog(true));
 +  }
@@ -116,25 +172,58 @@ index 1a126d4..10b989c 100644
          id: randomUUID(), operation, actor: 'user', status: 'failed', startedAt,
          completedAt: new Date().toISOString(), error: error.message
        }, error.conversion ? { conversion: error.conversion } : {});
-@@ -221,13 +259,15 @@ export class PersonalTemplateLibrary {
+@@ -205,6 +292,16 @@ export class PersonalTemplateLibrary {
+           if(update.page)progress.pages.push(update.page);
+         }, {signal:progress.controller.signal});
+         progress.controller.signal.throwIfAborted();
++        if (result.duplicate && result.template.templateProfile) {
++          const current = await this.readRecord(result.template.id);
++          if (current.version !== result.template.version) throw conflict();
++          if (current.templateProfile?.version !== PERSONAL_TEMPLATE_PROFILE_VERSION) {
++            await this.#reconcileRecord(current);
++            const template = { ...current, ...profileMetadata(result.template.templateProfile), version: randomUUID() };
++            await this.catalogLocked(() => this.store.writeJson(path.join(this.root, 'saved', current.id, 'template.json'), template));
++            return { duplicate: true, template };
++          }
++        }
+         return result;
+       } catch(error) {await rm(path.join(this.root,'drafts',draftId),{recursive:true,force:true});throw error;} finally {await rm(upload.directory,{recursive:true,force:true});}
+     })); } finally { progress.status=progress.controller.signal.aborted?'cancelled':'finished';progress.startedAt=Date.now(); }
+@@ -220,18 +317,24 @@ export class PersonalTemplateLibrary {
+         const bytes = upload?.bytes ?? decodeTemplateBase64(input?.base64);
          if (bytes.length < 4 || !bytes.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4])))
            throw new Error('请选择有效的 PPTX 文件');
-         const id = `personal-${hash(bytes)}`;
+-        const id = `personal-${hash(bytes)}`;
 -        const templates=await this.list();
+-        const saved = templates.find(item => item.id === id);
++        const sourceHash = hash(bytes), id = `personal-${sourceHash}`;
 +        const templates=await this.#readCatalog(false);
-         const saved = templates.find(item => item.id === id);
++        let saved;
++        for (const candidate of templates) {
++          if (candidate.authoringKind === 'native-pptd' || candidate.sha256 !== sourceHash) continue;
++          try {
++            const payload = await this.#recordPayload(candidate);
++            const original = await readFile(await this.checkedFile(payload, 'source.pptx'));
++            if (hash(original) === sourceHash) { saved = candidate; break; }
++          } catch { /* An unavailable historical source cannot prove this upload is a duplicate. */ }
++        }
          if (saved?.conversionVersion === PERSONAL_TEMPLATE_CONVERSION_VERSION && saved?.previewVersion === PERSONAL_TEMPLATE_PREVIEW_VERSION) {
            if(saved.templateProfile?.version===PERSONAL_TEMPLATE_PROFILE_VERSION)return {duplicate:true,template:saved};
            // Enrich a current cached conversion without repeating Office rendering.
-           const project=await loadPptdProject(await this.projectSource(id));
+-          const project=await loadPptdProject(await this.projectSource(id));
 -          const template={...saved,...profileMetadata(extractPersonalTemplateProfile(project))};
+-          const directory=path.join(this.root,'saved',id),temporary=path.join(directory,`profile-${randomUUID()}.json`);
+-          try {await writeFile(temporary,JSON.stringify(template),{flag:'wx',mode:0o600});await rename(temporary,await this.checkedFile(directory,'template.json'));}
+-          finally {await rm(temporary,{force:true});}
+-          return {duplicate:true,template};
++          const project=await loadPptdProject(await this.projectSource(saved.id));
 +          const profile=extractPersonalTemplateProfile(project);
 +          if(!validPersonalTemplateProfile(profile,saved.pageIndex)) throw new Error('模板结构索引生成失败，请检查模板工程');
-+          const template={...saved,...profileMetadata(profile)};
-           const directory=path.join(this.root,'saved',id),temporary=path.join(directory,`profile-${randomUUID()}.json`);
-           try {await writeFile(temporary,JSON.stringify(template),{flag:'wx',mode:0o600});await rename(temporary,await this.checkedFile(directory,'template.json'));}
-           finally {await rm(temporary,{force:true});}
-@@ -256,6 +296,7 @@ export class PersonalTemplateLibrary {
++          return {duplicate:true,template:{...saved,...profileMetadata(profile)}};
+         }
+         if (!saved && templates.length >= MAX_TEMPLATES) throw new Error('个人模板库最多保存 100 套模板');
+         const drafts = await this.directory('drafts');
+@@ -256,6 +359,7 @@ export class PersonalTemplateLibrary {
          const checked = checkPptdProject(original);
          if (checked.status === 'fail') throw conversionError(checked, fileName, hash(bytes));
          const templateProfile=extractPersonalTemplateProfile(original);
@@ -142,14 +231,42 @@ index 1a126d4..10b989c 100644
          const {source:sampleSource,samples:templateSamples}=createPersonalTemplateSamples(original,templateProfile);
          const source=personalTemplateSourceTheme(sampleSource,templateProfile);
          const parsed = parsePptdProject(source);
-@@ -345,31 +386,118 @@ export class PersonalTemplateLibrary {
-       return this.readPreview(path.join(this.root,'saved',templateId),record,page);
+@@ -342,33 +446,185 @@ export class PersonalTemplateLibrary {
+   async previewSavedPage(sessionId, templateId, page) {
+     return this.locked(() => this.audit(sessionId, 'preview-personal-template', async () => {
+       const record = await this.readRecord(templateId);
+-      return this.readPreview(path.join(this.root,'saved',templateId),record,page);
++      return this.readPreview(await this.#recordPayload(record),record,page);
      }));
    }
+-  async save(sessionId, draftId, name) {
+-    name = nameOf(name);
+-    return this.locked(() => this.audit(sessionId, 'save-personal-template', async () => {
+-      const directory = await this.draft(sessionId, draftId);
+-      const record = JSON.parse(await readFile(await this.checkedFile(directory, 'template.json'), 'utf8'));
+-      if (!ID.test(record.id)) throw new Error('模板标识无效');
+-      const templates=await this.list();
+-      const duplicate = templates.find(item => item.id === record.id);
+-      if (duplicate?.conversionVersion === record.conversionVersion && duplicate?.previewVersion === record.previewVersion) { await rm(directory, { recursive: true }); return duplicate; }
+-      if (!duplicate && templates.length >= MAX_TEMPLATES) throw new Error('个人模板库最多保存 100 套模板');
+-      const project = await loadPptdProject(path.join(directory, 'project'));
+-      if (checkPptdProject(project).status === 'fail') throw new Error('请重新上传完整的模板文件');
+-      const next = { ...record, ...(duplicate ? {createdAt:duplicate.createdAt,description:duplicate.description} : {}), name, previewTitle: name };
+-      await writeFile(path.join(directory, 'template.json'), JSON.stringify(next), { mode: 0o600 });
+-      const destination = path.join(await this.directory('saved'), record.id);
+-      if (duplicate) {
+-        // Publish only after preview acceptance; retain the old source/project for recovery.
+-        const backup = path.join(await this.directory('backups', record.id), randomUUID());
+-        await rename(destination, backup);
+-        try { await rename(directory, destination); }
+-        catch (error) { await rename(backup, destination); throw error; }
+-      } else await rename(directory, destination);
+-      return next;
+-    }));
 +  async exportPackage(sessionId, templateId) {
 +    return this.locked(async () => {
 +      const record = await this.readRecord(templateId);
-+      return encodeTemplatePackage(await readTemplatePackage(path.join(this.root, 'saved', templateId), record, { maxSlides: this.maxSlides }));
++      return encodeTemplatePackage(await readTemplatePackage(await this.#recordPayload(record), record, { maxSlides: this.maxSlides }));
 +    });
 +  }
 +  async importPackage(sessionId, input, signal) {
@@ -157,16 +274,17 @@ index 1a126d4..10b989c 100644
 +      signal?.throwIfAborted();
 +      const snapshot = await validateTemplatePackage(decodeTemplatePackage(input), { maxSlides: this.maxSlides });
 +      const name = nameOf(snapshot.metadata.name), description = descriptionOf(snapshot.metadata.description);
-+      const id = `personal-${snapshot.fingerprint}`;
++      let id = `personal-${snapshot.fingerprint}`;
 +      const templates = await this.catalogLocked(() => this.#readCatalog(false));
 +      for (const record of templates) {
 +        try {
-+          const existing = await readTemplatePackage(path.join(this.root, 'saved', record.id), record, { previews: false, maxSlides: this.maxSlides });
++          const existing = await readTemplatePackage(await this.#recordPayload(record), record, { previews: false, maxSlides: this.maxSlides });
 +          if (existing.fingerprint === snapshot.fingerprint) return { outcome: 'existing', template: record };
 +        } catch (error) {
 +          if (record.id === id) throw new Error('模板库完整性冲突：目标模板无法验证，请检查本地模板');
 +        }
 +      }
++      if (templates.some(record => record.id === id)) id = await this.#availableId();
 +      const destination = path.join(await this.directory('saved'), id);
 +      if (await exists(destination)) throw new Error('模板库完整性冲突：目标目录已存在，无法安全导入');
 +      if (templates.length >= MAX_TEMPLATES) throw new Error('个人模板库最多保存 100 套模板');
@@ -192,7 +310,7 @@ index 1a126d4..10b989c 100644
 +        const display = profileMetadata(profile ?? extractPersonalTemplateProfile(snapshot.project));
 +        delete display.templateProfile;
 +        const record = {
-+          id, sha256: snapshot.fingerprint, conversionVersion: PERSONAL_TEMPLATE_CONVERSION_VERSION, previewVersion: PERSONAL_TEMPLATE_PREVIEW_VERSION,
++          id, version: randomUUID(), sha256: snapshot.fingerprint, conversionVersion: PERSONAL_TEMPLATE_CONVERSION_VERSION, previewVersion: PERSONAL_TEMPLATE_PREVIEW_VERSION,
 +          origin: 'personal', category: 'personal', supportedModes: ['ppt'], name, description,
 +          ...(snapshot.metadata.sourceKind === 'native-pptd' ? { authoringKind: 'native-pptd' } : {}),
 +          previewTitle: name, previewSubtitle: '我的模板', createdAt: new Date().toISOString(),
@@ -218,57 +336,133 @@ index 1a126d4..10b989c 100644
 +      } finally { if (!published) await rm(directory, { recursive: true, force: true }); }
 +    });
 +  }
-   async save(sessionId, draftId, name) {
-     name = nameOf(name);
-     return this.locked(() => this.audit(sessionId, 'save-personal-template', async () => {
-       const directory = await this.draft(sessionId, draftId);
--      const record = JSON.parse(await readFile(await this.checkedFile(directory, 'template.json'), 'utf8'));
-+      let record = JSON.parse(await readFile(await this.checkedFile(directory, 'template.json'), 'utf8'));
-       if (!ID.test(record.id)) throw new Error('模板标识无效');
-+      record = await this.#readDirectoryRecord(directory, record.id, true);
-       const templates=await this.list();
-       const duplicate = templates.find(item => item.id === record.id);
--      if (duplicate?.conversionVersion === record.conversionVersion && duplicate?.previewVersion === record.previewVersion) { await rm(directory, { recursive: true }); return duplicate; }
-+      if (duplicate?.conversionVersion === record.conversionVersion && duplicate?.previewVersion === record.previewVersion) {
-+        await this.store.writeJson(path.join(await this.directory('save-receipts', hash(sessionId)), `${draftId}.json`), { templateId: duplicate.id });
-+        await rm(directory, { recursive: true });
-+        return duplicate;
++  save(sessionId, draftId, name) {
++    return this.locked(() => this.audit(sessionId, 'save-personal-template', async () =>
++      (await this.#commitDraft(sessionId, draftId, { name: nameOf(name), destination: { kind: 'import' } })).template));
++  }
++  commit(sessionId, draftId, input) {
++    const name = nameOf(input.name), destination = input.destination;
++    if (!['copy', 'original'].includes(destination?.kind)
++      || (destination.kind === 'original' && (!ID.test(destination.base?.templateId) || !VERSION.test(destination.base?.version))))
++      throw new Error('模板保存目标无效');
++    const target = destination.kind === 'copy' ? { kind: 'copy' } : { kind: 'original', base: { templateId: destination.base.templateId, version: destination.base.version } };
++    return this.locked(() => this.audit(sessionId, 'commit-authored-template', () => this.#commitDraft(sessionId, draftId, { name, destination: target })));
++  }
++  async #commitDraft(sessionId, draftId, input) {
++    if (!DRAFT.test(draftId)) throw new Error('模板保存标识无效');
++    const commitId = hash(`${hash(sessionId)}:${draftId}`), requestDigest = hash(JSON.stringify(input));
++    let receipt = await this.#receipt(commitId);
++    if (receipt?.status === 'pending') {
++      let record;
++      try { record = await this.readRecord(receipt.template.id); }
++      catch (error) { if (error.code !== 'ENOENT') throw error; }
++      if (record?.lastCommitId === commitId) {
++        await this.#reconcileRecord(record);
++        receipt = await this.#receipt(commitId);
 +      }
-       if (!duplicate && templates.length >= MAX_TEMPLATES) throw new Error('个人模板库最多保存 100 套模板');
--      const project = await loadPptdProject(path.join(directory, 'project'));
--      if (checkPptdProject(project).status === 'fail') throw new Error('请重新上传完整的模板文件');
-       const next = { ...record, ...(duplicate ? {createdAt:duplicate.createdAt,description:duplicate.description} : {}), name, previewTitle: name };
-       await writeFile(path.join(directory, 'template.json'), JSON.stringify(next), { mode: 0o600 });
-+      await writeFile(path.join(directory, 'owner.json'), JSON.stringify({ session: hash(sessionId), draftId }), { mode: 0o600 });
-       const destination = path.join(await this.directory('saved'), record.id);
--      if (duplicate) {
-+      await this.catalogLocked(async () => { if (duplicate) {
-         // Publish only after preview acceptance; retain the old source/project for recovery.
-         const backup = path.join(await this.directory('backups', record.id), randomUUID());
-         await rename(destination, backup);
-         try { await rename(directory, destination); }
-         catch (error) { await rename(backup, destination); throw error; }
--      } else await rename(directory, destination);
-+      } else await rename(directory, destination); });
++    }
++    if (receipt && receipt.requestDigest !== requestDigest) {
++      if (receipt.status === 'committed') throw new Error('该预览已使用其他名称或保存目标提交，请生成新的预览');
++      receipt = undefined;
++    }
++    if (receipt?.status === 'committed') return { template: receipt.template, base: receipt.base };
++    const directory = await this.draft(sessionId, draftId);
++    const draft = await this.#readDirectoryRecord(directory, undefined, true);
++    const templates = await this.list();
++    let original;
++    if (input.destination.kind === 'original') {
++      try { original = await this.readRecord(input.destination.base.templateId); }
++      catch (error) { if (error.code === 'ENOENT') throw new Error('原模板已删除，可以另存为新模板'); throw error; }
++      await this.#reconcileRecord(original);
++      if (original.version !== input.destination.base.version) throw conflict();
++    } else if (input.destination.kind === 'import') {
++      const incoming = await readTemplatePackage(directory, draft, { previews: false, maxSlides: this.maxSlides });
++      for (const record of templates) {
++        let snapshot;
++        try { snapshot = await readTemplatePackage(await this.#recordPayload(record), record, { previews: false, maxSlides: this.maxSlides }); }
++        catch { continue; }
++        if (snapshot.fingerprint !== incoming.fingerprint) continue;
++        await this.#reconcileRecord(record);
++        await this.#writeReceipt({ status: 'committed', commitId, requestDigest, template: record, base: baseOf(record) });
++        await rm(directory, { recursive: true, force: true });
++        return { template: record, base: baseOf(record) };
++      }
++    }
++    if (!original && templates.length >= MAX_TEMPLATES) throw new Error('个人模板库最多保存 100 套模板');
++    if (!receipt) {
++      const id = original?.id ?? await this.#availableId(input.destination.kind === 'import' ? draft.id : undefined);
++      const next = { ...draft, id, name: input.name, previewTitle: input.name,
++        createdAt: original?.createdAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(),
++        version: randomUUID(), lastCommitId: commitId, ...(original ? { contentRevision: randomUUID() } : {}) };
++      receipt = { status: 'pending', commitId, requestDigest, template: next, base: baseOf(next) };
++      await this.#writeReceipt(receipt);
++    }
++    const next = receipt.template, destination = path.join(await this.directory('saved'), next.id);
++    const stage = await this.directory('commit-staging', randomUUID());
++    try {
++      await cp(directory, stage, { recursive: true, errorOnExist: true, force: false });
++      const payloadRecord = { ...next }; delete payloadRecord.contentRevision;
++      await this.store.writeJson(path.join(stage, 'template.json'), payloadRecord);
++      await this.#readDirectoryRecord(stage, next.id, true);
++      if (original) {
++        const revisions = await this.directory('saved', next.id, 'revisions');
++        const payload = path.join(revisions, next.contentRevision);
++        if (await exists(payload)) {
++          const installed = await this.#readDirectoryRecord(payload, next.id, true);
++          if (installed.version !== next.version || installed.lastCommitId !== commitId) throw new Error('模板内容版本冲突');
++        } else await rename(stage, payload);
++        await this.catalogLocked(() => this.store.writeJson(path.join(destination, 'template.json'), next));
++      } else {
++        await this.catalogLocked(async () => {
++          if (await exists(destination)) throw new Error('模板保存目标已存在，请检查模板库');
++          await rename(stage, destination);
++        });
++      }
++      await this.#writeReceipt({ ...receipt, status: 'committed' });
++      await rm(directory, { recursive: true, force: true }).catch(() => {});
++      return { template: next, base: receipt.base };
++    } finally { await rm(stage, { recursive: true, force: true }).catch(() => {}); }
++  }
++  async savedDraft(sessionId, draftId) {
++    if (!DRAFT.test(draftId)) throw new Error('模板保存记录无效');
++    return this.locked(async () => {
++      let receipt = await this.#receipt(hash(`${hash(sessionId)}:${draftId}`));
++      if (receipt?.status === 'pending') {
++        const current = await this.readRecord(receipt.template.id);
++        if (current.lastCommitId === receipt.commitId) await this.#reconcileRecord(current);
++        receipt = await this.#receipt(receipt.commitId);
++      }
++      if (receipt?.status === 'committed') return receipt.template;
++      const error = new Error('模板保存回执不存在'); error.code = 'ENOENT'; throw error;
++    });
++  }
++  async previewSavedDraft(sessionId, draftId, page) {
++    const record = await this.savedDraft(sessionId, draftId);
++    return this.locked(async () => this.readPreview(await this.#recordPayload(record), record, page));
+   }
+   async cancel(sessionId, draftId) {
+     return this.locked(() => this.audit(sessionId, 'cancel-personal-template', async () => {
+@@ -384,28 +640,27 @@ export class PersonalTemplateLibrary {
+       const name = nameOf(changes.name);
+       const description = changes.description === undefined ? undefined : descriptionOf(changes.description);
+       const record = await this.readRecord(id);
+-      const next = { ...record, name, previewTitle: name, ...(description === undefined ? {} : { description }), updatedAt: new Date().toISOString() };
++      await this.#reconcileRecord(record);
++      const next = { ...record, version: randomUUID(), name, previewTitle: name, ...(description === undefined ? {} : { description }), updatedAt: new Date().toISOString() };
+       const file = path.join(this.root, 'saved', id, 'template.json');
+       const temporary = `${file}.${randomUUID()}.tmp`;
+       try {
+         await writeFile(temporary, JSON.stringify(next), { mode: 0o600 });
+-        await rename(temporary, file);
++        await this.catalogLocked(() => rename(temporary, file));
+       } finally { await rm(temporary, { force: true }); }
        return next;
      }));
    }
-+  async savedDraft(sessionId, draftId, id) {
-+    if (!DRAFT.test(draftId) || !ID.test(id)) throw new Error('模板保存记录无效');
-+    const record = await this.readRecord(id);
-+    let proof;
-+    try { proof = JSON.parse(await readFile(await this.checkedFile(path.join(this.root, 'saved', id), 'owner.json'), 'utf8')); }
-+    catch (error) { if (error.code !== 'ENOENT') throw error; }
-+    if (proof?.session === hash(sessionId) && proof.draftId === draftId) return record;
-+    const receipt = JSON.parse(await readFile(path.join(this.root, 'save-receipts', hash(sessionId), `${draftId}.json`), 'utf8'));
-+    if (receipt.templateId !== id) throw new Error('模板保存记录与预览不匹配');
-+    return record;
-+  }
-   async cancel(sessionId, draftId) {
-     return this.locked(() => this.audit(sessionId, 'cancel-personal-template', async () => {
-       await rm(await this.draft(sessionId, draftId), { recursive: true });
-@@ -399,13 +527,11 @@ export class PersonalTemplateLibrary {
-       await this.readRecord(id);
+   async remove(sessionId, id) {
+     return this.locked(() => this.audit(sessionId, 'delete-personal-template', async () => {
+-      await this.readRecord(id);
++      await this.#reconcileRecord(await this.readRecord(id));
        const directory = path.join(this.root, 'saved', id);
        const trash = path.join(await this.directory('trash'), `${id}-${randomUUID()}`);
 -      await rename(directory, trash);
@@ -283,7 +477,7 @@ index 1a126d4..10b989c 100644
      // Walk before reading or copying; saved image paths remain confined to this project.
      const inspect = async current => {
        for (const item of await readdir(current, { withFileTypes: true })) {
-@@ -416,8 +542,26 @@ export class PersonalTemplateLibrary {
+@@ -416,8 +671,53 @@ export class PersonalTemplateLibrary {
      };
      if ((await lstat(directory)).isSymbolicLink()) throw new Error('模板工程目录无效');
      await inspect(directory);
@@ -298,8 +492,18 @@ index 1a126d4..10b989c 100644
 +    if (!ID.test(id)) throw new Error('个人模板标识无效');
 +    return this.catalogLocked(async () => {
 +      const directory = path.join(this.root, 'saved', id);
-+      await this.#readDirectoryRecord(directory, id, true);
-+      return path.join(directory, 'project');
++      const record = await this.#readDirectoryRecord(directory, id, true);
++      return path.join(await this.#payloadDirectory(directory, record), 'project');
++    });
++  }
++  async readSnapshot(id) {
++    if (!ID.test(id)) throw new Error('个人模板标识无效');
++    return this.catalogLocked(async () => {
++      const directory = path.join(this.root, 'saved', id);
++      const record = await this.#readDirectoryRecord(directory, id, true);
++      const projectPath = path.join(await this.#payloadDirectory(directory, record), 'project');
++      const design = (await readTemplateDesign(projectPath, record.pageIndex))?.design;
++      return { record, projectPath, design };
 +    });
 +  }
 +  async readDesign(id) {
@@ -307,7 +511,24 @@ index 1a126d4..10b989c 100644
 +    return this.catalogLocked(async () => {
 +      const directory = path.join(this.root, 'saved', id);
 +      const record = await this.#readDirectoryRecord(directory, id, true);
-+      return (await readTemplateDesign(path.join(directory, 'project'), record.pageIndex))?.design;
++      return (await readTemplateDesign(path.join(await this.#payloadDirectory(directory, record), 'project'), record.pageIndex))?.design;
++    });
++  }
++  checkout(base, output, signal) {
++    if (!ID.test(base?.templateId) || !VERSION.test(base?.version)) throw new Error('模板编辑来源无效');
++    return this.locked(async () => {
++      signal?.throwIfAborted();
++      const record = await this.readRecord(base.templateId);
++      if (record.version !== base.version) throw conflict();
++      const source = await this.projectSource(record.id);
++      const info = await lstat(output);
++      if (!info.isDirectory() || info.isSymbolicLink() || (await readdir(output)).length) throw new Error('请使用新的空工程目录');
++      for (const item of await readdir(source)) {
++        signal?.throwIfAborted();
++        await cp(path.join(source, item), path.join(output, item), { recursive: true, errorOnExist: true, force: false });
++      }
++      signal?.throwIfAborted();
++      return record;
 +    });
    }
    async copyProject(id, output) {

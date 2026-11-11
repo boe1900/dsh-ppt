@@ -444,7 +444,7 @@ test('review previews every page, blocks save while running, and saves without c
   assert(ui.doc.querySelector('[data-template-authoring] header button').disabled);
   await React.act(async () => finishSave());
   assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
-  assert.match(ui.doc.querySelector('[data-template-authoring-feedback] [role=status]').textContent, /Weekly report.*saved.*new PPT conversation.*Custom/);
+  assert.match(ui.doc.querySelector('[data-template-authoring-feedback] [role=status]').textContent, /Weekly report.*saved.*Continue requesting changes/);
   assert.equal(ui.state.selectedTemplateId, definitions[0].id);
   assert.equal(ui.requests.some(item => item.endpoint === 'template/select'), false);
   await ui.click(ui.doc.querySelector('[data-template-authoring-feedback] button[aria-label=Close]'));
@@ -500,6 +500,62 @@ test('review keeps preview retries and explicit exit while creating hides the re
   assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
 });
 
+test('editing saved template content binds its target and sends the editing guide without changing selection', async t => {
+  const ui = await fixture(t, {
+    'template/authoring-start': (payload, state) => state.templateAuthoring = {
+      phase: 'creating', workflowId: 'edit-workflow', revision: 0, guideSent: false,
+      name: personal.name, origin: { kind: 'existing', base: { templateId: payload.templateId, version: 'version-one' } },
+    },
+  });
+  ui.state.templates.push(personal);
+  ui.state.selectedTemplateId = definitions[0].id;
+  await ui.reload();
+  await ui.click(ui.doc.querySelector('[data-personal-card] .personal-more'));
+  await ui.click([...ui.doc.querySelectorAll('[role=menuitem]')].find(node => node.textContent === 'Edit template content'));
+  assert.equal(ui.requests.find(item => item.endpoint === 'template/authoring-start').payload.templateId, personal.id);
+  assert.equal(ui.state.templateAuthoring.origin.base.templateId, personal.id);
+  assert.match(ui.sent[0].text, /Continue editing.*ppt_template_edit/);
+  assert.equal(ui.state.selectedTemplateId, definitions[0].id);
+  assert.equal(ui.requests.some(item => item.endpoint === 'template/select'), false);
+  assert.deepEqual(ui.composer, { text: 'Keep my existing draft', attachments: [{ name: 'brand.pptx' }] });
+});
+
+test('a rejected original update keeps the reviewed draft available for an explicit copy', async t => {
+  const ui = await fixture(t, {
+    'template/authoring-preview': () => ({ preview: personal.previewImages[0] }),
+    'template/authoring-save': (payload, state) => {
+      if (payload.destination === 'original') throw new Error('Original template was updated in another conversation');
+      return state.templateAuthoring = { ...state.templateAuthoring, phase: 'saved', name: payload.name, templateId: 'saved-copy' };
+    },
+  });
+  ui.state.templateAuthoring = { phase: 'review', workflowId: 'edit-workflow', revision: 2, draftId: 'edited-draft',
+    name: 'Edited template', slideCount: 2, guideSent: true,
+    origin: { kind: 'existing', base: { templateId: personal.id, version: 'version-one' } } };
+  await ui.startConversation(); await ui.reload();
+  await ui.until(() => ui.doc.querySelector('.dsh-ppt-authoring-thumbnail img'));
+  await ui.click(ui.doc.querySelector('[data-template-authoring] button[type=submit]'));
+  assert.match(ui.doc.querySelector('[role=alert]').textContent, /updated in another conversation/);
+  assert.equal(ui.state.templateAuthoring.draftId, 'edited-draft');
+  await ui.click([...ui.doc.querySelectorAll('[data-template-authoring] button')].find(node => node.textContent === 'Save a copy'));
+  assert.equal(ui.state.templateAuthoring.phase, 'saved');
+  assert.equal(ui.state.templateAuthoring.templateId, 'saved-copy');
+  assert.deepEqual(ui.requests.filter(item => item.endpoint === 'template/authoring-save').map(item => item.payload.destination), ['original', 'copy']);
+  assert.equal(ui.doc.querySelector('[data-template-authoring]'), null);
+});
+
+test('a saved template preview refreshes when its content changes under the same ID', async t => {
+  const ui = await fixture(t, {
+    'template/preview-saved-page': (_payload, state) => ({ preview: `data:image/png;base64,${Buffer.from(state.templates.find(item => item.id === personal.id).version).toString('base64')}` }),
+  });
+  ui.state.templates.push({ ...personal, version: 'before-update' }); await ui.reload();
+  await ui.click(ui.doc.querySelector('[data-personal-card] .ppt-preview-open'));
+  await ui.until(() => ui.doc.querySelector('.ppt-template-stage img')?.src.endsWith(Buffer.from('before-update').toString('base64')));
+  await ui.setRunning(true);
+  ui.state.templates = ui.state.templates.map(item => item.id === personal.id ? { ...item, version: 'after-update' } : item);
+  await ui.setRunning(false);
+  await ui.until(() => ui.doc.querySelector('.ppt-template-stage img')?.src.endsWith(Buffer.from('after-update').toString('base64')));
+});
+
 test('saved library retains preview, editing, deletion and ordinary first-message behavior', async t => {
   const ui = await fixture(t, {
     'template/preview-saved-page': () => ({ preview: personal.previewImages[0] }),
@@ -512,7 +568,7 @@ test('saved library retains preview, editing, deletion and ordinary first-messag
   await ui.until(() => doc.querySelector('.ppt-template-viewer img'));
   await click(doc.querySelector('.ppt-template-viewer button[aria-label=Close]'));
   await click(doc.querySelector('[data-personal-card] .personal-more'));
-  await click(doc.querySelector('[data-personal-card] button[aria-label="Edit template"]'));
+  await click(doc.querySelector('[data-personal-card] button[aria-label="Edit template details"]'));
   const description = doc.querySelector('.personal-dialog textarea');
   const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
   await React.act(async () => { setter.call(description, 'Updated use case'); description.dispatchEvent(new window.Event('input', { bubbles: true })); });

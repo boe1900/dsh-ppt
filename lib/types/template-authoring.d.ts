@@ -1,5 +1,5 @@
 import type { TemplateAuthoringState, OfficePptState } from './protocol.js';
-import type { PersonalTemplatePagePreview } from './personal-templates.js';
+import type { PersonalTemplatePagePreview, PersonalTemplateRecord, TemplateBase } from './personal-templates.js';
 import type { AuthoredTemplateInput } from './authored-templates.js';
 import type { PptService } from './ppt-service.js';
 export interface TemplateReviewRequest {
@@ -12,12 +12,13 @@ export declare function normalizeTemplateAuthoring(value: unknown): TemplateAuth
 export declare class TemplateAuthoring {
     constructor(service: PptService);
     project(state: OfficePptState): OfficePptState;
-    start(sessionId: string): Promise<TemplateAuthoringState>;
+    start(sessionId: string, templateId?: string): Promise<TemplateAuthoringState>;
+    copySource(sessionId: string, input: { templateId: string; projectPath: string; turnId?: string }, publishCopy: (base: TemplateBase) => Promise<PersonalTemplateRecord>, signal?: AbortSignal): Promise<TemplateAuthoringState>;
     guided(sessionId: string, workflowId: string): Promise<TemplateAuthoringState>;
     exit(sessionId: string, workflowId: string): Promise<boolean>;
     revise(sessionId: string, turnId?: string): Promise<TemplateAuthoringState | undefined>;
     prepare(sessionId: string, input: AuthoredTemplateInput, signal?: AbortSignal): Promise<Extract<TemplateAuthoringState, { phase: 'review' }>>;
     preview(sessionId: string, request: TemplateReviewRequest & { page: number }): Promise<PersonalTemplatePagePreview>;
     matches(current: TemplateAuthoringState | undefined, request: TemplateReviewRequest): void;
-    save(sessionId: string, request: TemplateReviewRequest & { name: string }): Promise<Extract<TemplateAuthoringState, { phase: 'saved' }>>;
+    save(sessionId: string, request: TemplateReviewRequest & { name: string; destination?: 'original' | 'copy' }): Promise<Extract<TemplateAuthoringState, { phase: 'saved' }>>;
 }
