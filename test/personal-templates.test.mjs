@@ -74,6 +74,18 @@ test('custom PPTX templates upload, preview, persist, copy and export through th
   await assert.rejects(f.request('template/save', { draftId: draft.draftId, name: 'Wrong owner' }, 'session-b'), /其他会话/);
   const saved = await f.request('template/save', { draftId: draft.draftId, name: '公司模板' });
   assert.equal(saved.origin, 'personal');
+  const packageFile = await f.request('template/package-export', { templateId: saved.id });
+  const receiving = await fixture(t);
+  const imported = await receiving.request('template/package-import', packageFile);
+  assert.equal(imported.outcome, 'imported');
+  assert.deepEqual(imported.template.templateProfile, saved.templateProfile);
+  assert.deepEqual(imported.template.templateSamples, saved.templateSamples);
+  assert.equal(imported.template.authoringKind, undefined);
+  assert.equal((await receiving.request('template/package-import', packageFile)).outcome, 'existing');
+  await receiving.request('template/select', { templateId: imported.template.id, mode: 'ppt' }, 'session-b');
+  await receiving.run('ppt_template_create_project', { template_id: imported.template.id, output_directory: 'shared-report' });
+  assert.equal((await receiving.run('pptd_render', { project_path: 'shared-report', output_file: 'shared-report.pptx' })).status, 'exported');
+  await assert.rejects(f.request('template/package-export', { templateId: 'dsh-blue-professional' }), /标识无效/);
   await f.request('template/select', { templateId: saved.id, mode: 'ppt' }, 'session-b');
   const restored = await fixture(t, f.scratch);
   const state = await restored.request('state', {}, 'session-b');
@@ -106,9 +118,11 @@ test('template upload rejects bad input and keeps HTTP authentication', async t 
   const upload = await f.request('template/upload-start', { input: { fileName: 'cancel.pptx', size: 4 } });
   await f.request('template/upload-cancel', { uploadId: upload.uploadId });
   await f.request('template/upload-cancel', { uploadId: upload.uploadId });
-  const req = Readable.from([Buffer.from('{}')]);
-  Object.assign(req, { method: 'POST', url: '/dsh-ppt/template/upload-start', headers: {} });
-  let status;
-  await f.routes.get('/dsh-ppt').handler(req, { writeHead: code => { status = code; }, end() {} });
-  assert.equal(status, 401);
+  for (const endpoint of ['template/upload-start', 'template/package-import', 'template/package-export']) {
+    const req = Readable.from([Buffer.from('{}')]);
+    Object.assign(req, { method: 'POST', url: `/dsh-ppt/${endpoint}`, headers: {} });
+    let status;
+    await f.routes.get('/dsh-ppt').handler(req, { writeHead: code => { status = code; }, end() {} });
+    assert.equal(status, 401);
+  }
 });

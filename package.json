@@ -1,7 +1,7 @@
 {
   "name": "@cola1900/dsh-ppt",
   "description": "Standalone DSH plugin for PPT authoring, template selection, validation and editable PPTX export",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/boe1900/dsh-ppt.git"
@@ -78,7 +78,8 @@
     "sharp": "^0.35.3",
     "@deepseek-ai/libreoffice-kit": "0.1.5",
     "fflate": "^0.8.3",
-    "saxes": "6.0.0"
+    "saxes": "6.0.0",
+    "css-tree": "^3.2.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",

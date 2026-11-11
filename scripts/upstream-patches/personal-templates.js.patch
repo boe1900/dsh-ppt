@@ -1,16 +1,17 @@
 diff --git a/lib/personal-templates.js b/lib/personal-templates.js
-index 1a126d4..8618e6a 100644
+index 1a126d4..10b989c 100644
 --- a/lib/personal-templates.js
 +++ b/lib/personal-templates.js
-@@ -9,6 +9,7 @@ import { prepareOfficeFontAccess } from './office-font-access.js';
+@@ -9,6 +9,8 @@ import { prepareOfficeFontAccess } from './office-font-access.js';
  import { extractPersonalTemplateProfile, personalTemplateSourceTheme, validPersonalTemplateProfile, PERSONAL_TEMPLATE_PROFILE_VERSION } from './personal-template-profile.js';
  import { createPersonalTemplateSamples, validPersonalTemplateSamples } from './personal-template-samples.js';
  import { PersonalTemplateUploads, personalTemplateFileName, decodeTemplateBase64 } from './personal-template-upload.js';
 +import { readTemplateDesign } from './template-design.js';
++import { decodeTemplatePackage, validateTemplatePackage, readTemplatePackage, encodeTemplatePackage } from './template-package.js';
  
  export const PERSONAL_TEMPLATE_CONVERSION_VERSION = 10;
  export const PERSONAL_TEMPLATE_PREVIEW_VERSION = 11;
-@@ -59,7 +60,9 @@ function conversionError(check, fileName, sha256) {
+@@ -59,7 +61,9 @@ function conversionError(check, fileName, sha256) {
  /** One library per host-owned Desktop profile; caller-supplied paths never select a library. */
  export class PersonalTemplateLibrary {
    tail = Promise.resolve();
@@ -20,7 +21,7 @@ index 1a126d4..8618e6a 100644
    fontAccess;
    constructor(store, convert, writeSource, maxSlides = MAX_PERSONAL_TEMPLATE_SLIDES) {
      this.store = store;
-@@ -74,6 +77,11 @@ export class PersonalTemplateLibrary {
+@@ -74,6 +78,11 @@ export class PersonalTemplateLibrary {
      this.tail = pending;
      return pending;
    }
@@ -32,7 +33,7 @@ index 1a126d4..8618e6a 100644
    async directory(...parts) {
      await mkdir(this.store.root, { recursive: true, mode: 0o700 });
      const target = path.join(this.root, ...parts);
-@@ -97,43 +105,72 @@ export class PersonalTemplateLibrary {
+@@ -97,43 +106,72 @@ export class PersonalTemplateLibrary {
    }
    async readRecord(id) {
      if (!ID.test(id)) throw new Error('个人模板标识无效');
@@ -115,7 +116,7 @@ index 1a126d4..8618e6a 100644
          id: randomUUID(), operation, actor: 'user', status: 'failed', startedAt,
          completedAt: new Date().toISOString(), error: error.message
        }, error.conversion ? { conversion: error.conversion } : {});
-@@ -221,13 +258,15 @@ export class PersonalTemplateLibrary {
+@@ -221,13 +259,15 @@ export class PersonalTemplateLibrary {
          if (bytes.length < 4 || !bytes.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4])))
            throw new Error('请选择有效的 PPTX 文件');
          const id = `personal-${hash(bytes)}`;
@@ -133,7 +134,7 @@ index 1a126d4..8618e6a 100644
            const directory=path.join(this.root,'saved',id),temporary=path.join(directory,`profile-${randomUUID()}.json`);
            try {await writeFile(temporary,JSON.stringify(template),{flag:'wx',mode:0o600});await rename(temporary,await this.checkedFile(directory,'template.json'));}
            finally {await rm(temporary,{force:true});}
-@@ -256,6 +295,7 @@ export class PersonalTemplateLibrary {
+@@ -256,6 +296,7 @@ export class PersonalTemplateLibrary {
          const checked = checkPptdProject(original);
          if (checked.status === 'fail') throw conversionError(checked, fileName, hash(bytes));
          const templateProfile=extractPersonalTemplateProfile(original);
@@ -141,7 +142,83 @@ index 1a126d4..8618e6a 100644
          const {source:sampleSource,samples:templateSamples}=createPersonalTemplateSamples(original,templateProfile);
          const source=personalTemplateSourceTheme(sampleSource,templateProfile);
          const parsed = parsePptdProject(source);
-@@ -349,27 +389,42 @@ export class PersonalTemplateLibrary {
+@@ -345,31 +386,118 @@ export class PersonalTemplateLibrary {
+       return this.readPreview(path.join(this.root,'saved',templateId),record,page);
+     }));
+   }
++  async exportPackage(sessionId, templateId) {
++    return this.locked(async () => {
++      const record = await this.readRecord(templateId);
++      return encodeTemplatePackage(await readTemplatePackage(path.join(this.root, 'saved', templateId), record, { maxSlides: this.maxSlides }));
++    });
++  }
++  async importPackage(sessionId, input, signal) {
++    return this.locked(async () => {
++      signal?.throwIfAborted();
++      const snapshot = await validateTemplatePackage(decodeTemplatePackage(input), { maxSlides: this.maxSlides });
++      const name = nameOf(snapshot.metadata.name), description = descriptionOf(snapshot.metadata.description);
++      const id = `personal-${snapshot.fingerprint}`;
++      const templates = await this.catalogLocked(() => this.#readCatalog(false));
++      for (const record of templates) {
++        try {
++          const existing = await readTemplatePackage(path.join(this.root, 'saved', record.id), record, { previews: false, maxSlides: this.maxSlides });
++          if (existing.fingerprint === snapshot.fingerprint) return { outcome: 'existing', template: record };
++        } catch (error) {
++          if (record.id === id) throw new Error('模板库完整性冲突：目标模板无法验证，请检查本地模板');
++        }
++      }
++      const destination = path.join(await this.directory('saved'), id);
++      if (await exists(destination)) throw new Error('模板库完整性冲突：目标目录已存在，无法安全导入');
++      if (templates.length >= MAX_TEMPLATES) throw new Error('个人模板库最多保存 100 套模板');
++      const directory = await this.directory('package-staging', randomUUID());
++      let published = false;
++      try {
++        for (const [file, bytes] of snapshot.files) {
++          signal?.throwIfAborted();
++          const relative = file === 'original/source.pptx' ? 'source.pptx' : file;
++          const target = path.join(directory, relative);
++          await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
++          await writeFile(target, bytes, { mode: 0o600, flag: 'wx' });
++        }
++        const samples = snapshot.metadata.templateSamples;
++        const representative = samples ? [samples.representativePages[0], samples.representativePages[Math.floor(samples.representativePages.length / 2)], samples.representativePages.at(-1)]
++          : [1, Math.ceil(snapshot.pageIndex.length / 2), snapshot.pageIndex.length];
++        const previewImages = [];
++        for (const page of representative) {
++          const bytes = await sharp(snapshot.files.get(`preview/pages/page-${page}.png`)).resize({ width: THUMBNAIL_LONG_EDGE, height: THUMBNAIL_LONG_EDGE, fit: 'inside', withoutEnlargement: true }).png().toBuffer();
++          previewImages.push(`data:image/png;base64,${bytes.toString('base64')}`);
++        }
++        const profile = snapshot.metadata.templateProfile;
++        const display = profileMetadata(profile ?? extractPersonalTemplateProfile(snapshot.project));
++        delete display.templateProfile;
++        const record = {
++          id, sha256: snapshot.fingerprint, conversionVersion: PERSONAL_TEMPLATE_CONVERSION_VERSION, previewVersion: PERSONAL_TEMPLATE_PREVIEW_VERSION,
++          origin: 'personal', category: 'personal', supportedModes: ['ppt'], name, description,
++          ...(snapshot.metadata.sourceKind === 'native-pptd' ? { authoringKind: 'native-pptd' } : {}),
++          previewTitle: name, previewSubtitle: '我的模板', createdAt: new Date().toISOString(),
++          fileName: snapshot.metadata.sourceKind === 'native-pptd' ? 'deck.pptd' : 'source.pptx',
++          slideCount: snapshot.pageIndex.length, pageIndex: snapshot.pageIndex,
++          aspectRatio: snapshot.project.width / snapshot.project.height >= 1.5 ? 'wide' : 'standard',
++          ...display, ...(profile ? { templateProfile: profile } : {}), ...(samples ? { templateSamples: samples } : {}),
++          previewImages, previewMetadata: { source: 'template-package', version: 1 },
++          diagnostics: [], resourcePlaceholders: [], checkWarnings: snapshot.check.warningCount,
++          reviewIssues: snapshot.check.issues.filter(issue => issue.severity === 'warning'),
++        };
++        await writeFile(path.join(directory, 'template.json'), JSON.stringify(record), { mode: 0o600, flag: 'wx' });
++        await this.#readDirectoryRecord(directory, id, true);
++        await this.catalogLocked(async () => {
++          signal?.throwIfAborted();
++          if (await exists(destination)) throw new Error('模板库完整性冲突：目标目录已存在，无法安全导入');
++          await rename(directory, destination);
++          published = true;
++        });
++        await this.store.recordAudit(sessionId, { id: randomUUID(), operation: 'import-template-package', actor: 'user', status: 'completed',
++          startedAt: record.createdAt, completedAt: new Date().toISOString(), summary: 'import-template-package' }, { templateId: id }).catch(() => {});
++        return { outcome: 'imported', template: record };
++      } finally { if (!published) await rm(directory, { recursive: true, force: true }); }
++    });
++  }
+   async save(sessionId, draftId, name) {
      name = nameOf(name);
      return this.locked(() => this.audit(sessionId, 'save-personal-template', async () => {
        const directory = await this.draft(sessionId, draftId);
@@ -190,7 +267,7 @@ index 1a126d4..8618e6a 100644
    async cancel(sessionId, draftId) {
      return this.locked(() => this.audit(sessionId, 'cancel-personal-template', async () => {
        await rm(await this.draft(sessionId, draftId), { recursive: true });
-@@ -399,13 +454,11 @@ export class PersonalTemplateLibrary {
+@@ -399,13 +527,11 @@ export class PersonalTemplateLibrary {
        await this.readRecord(id);
        const directory = path.join(this.root, 'saved', id);
        const trash = path.join(await this.directory('trash'), `${id}-${randomUUID()}`);
@@ -206,7 +283,7 @@ index 1a126d4..8618e6a 100644
      // Walk before reading or copying; saved image paths remain confined to this project.
      const inspect = async current => {
        for (const item of await readdir(current, { withFileTypes: true })) {
-@@ -416,8 +469,26 @@ export class PersonalTemplateLibrary {
+@@ -416,8 +542,26 @@ export class PersonalTemplateLibrary {
      };
      if ((await lstat(directory)).isSymbolicLink()) throw new Error('模板工程目录无效');
      await inspect(directory);

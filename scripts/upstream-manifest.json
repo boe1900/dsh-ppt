@@ -6,8 +6,8 @@
       "reason": "Standalone Harness plugin integration, persistence and HTTP routes replace Desktop-specific integration.",
       "patch": "scripts/upstream-patches/index.js.patch",
       "upstreamSha256": "7be170b229919fc7c8af3d8a68239558e84ca74769435299e0cf7fa9759a6a6d",
-      "localSha256": "d0254144f1f52f7dd27e1945d92bc2f6d6703e89afc915f5d8c92a292aa60526",
-      "patchSha256": "cd3fdf013165df3129bb960805c943d4e8757ba47ba1c0baaf14b2e51d588ec1"
+      "localSha256": "0b31afff7b7a76617b627faab042072eb646662044740e5b9b5647d34ad685ca",
+      "patchSha256": "c209d1445d49c97293df932e4f69e985b23ba6d27eb5c03c2d00893673777a20"
     },
     "bin.js": {
       "reason": "Standalone CLI shares the bounded PPTD schema parser with the runtime.",
@@ -20,8 +20,8 @@
       "reason": "Standalone personal-template persistence uses the shared atomic store helpers.",
       "patch": "scripts/upstream-patches/personal-templates.js.patch",
       "upstreamSha256": "899892940920b391a05320ac7acb8ba7ed7b1a40a077ed2a885f279b7c41d42f",
-      "localSha256": "971c0243cb5d1296c71aa4b26b9531a203b97ee59acda1149e1da47bbd300d1c",
-      "patchSha256": "6bd4365402f010ce5b947754b772bd2d0e0bfe9858ad0bd4301b899c471bdb73"
+      "localSha256": "42b337e849efe1a94ceb60505450dca951ce3aa499ef0c1267a57182c1f9d991",
+      "patchSha256": "f1f7d3bc7ea8f736f33303084eac9c1bbaf908d653be6aca66dcf9c9baa0b9e9"
     },
     "invariant.js": {
       "reason": "Public service ownership and package identity use @cola1900/dsh-ppt.",
@@ -87,6 +87,9 @@
     },
     "pptd-schema.js": {
       "reason": "Shared bounded PPTD schema parsing for runtime and CLI entry points."
+    },
+    "template-package.js": {
+      "reason": "Bounded portable template package codec, reusable source validation and content identity."
     }
   }
 }

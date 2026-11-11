@@ -54,6 +54,8 @@ export declare class PersonalTemplateLibrary {
     draft(sessionId: string, draftId: string): Promise<string>;
     previewPage(sessionId: string, draftId: string, page: number): Promise<PersonalTemplatePagePreview>;
     previewSavedPage(sessionId: string, templateId: string, page: number): Promise<PersonalTemplatePagePreview>;
+    importPackage(sessionId: string, input: { fileName: string; base64: string }, signal?: AbortSignal): Promise<{ outcome: 'imported' | 'existing'; template: PersonalTemplateRecord }>;
+    exportPackage(sessionId: string, templateId: string): Promise<{ fileName: string; base64: string }>;
     save(sessionId: string, draftId: string, name: string): Promise<PersonalTemplateRecord>;
     cancel(sessionId: string, draftId: string): Promise<{ draftId: string }>;
     rename(sessionId: string, id: string, name: string): Promise<PersonalTemplateRecord>;

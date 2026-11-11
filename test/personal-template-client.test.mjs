@@ -22,6 +22,7 @@ async function fixture(t, handlers = {}) {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  handlers.setupWindow?.(dom.window);
   let entry, seat, dictionary;
   let blank = true, running = false, agentPreset = 'ppt', sessionId = 'custom-template-test';
   const states = new Map();
@@ -34,7 +35,7 @@ async function fixture(t, handlers = {}) {
   dom.window.__ModuleLoader__ = { load: value => { entry = value; } };
   vm.runInNewContext(await readFile(new URL('../lib/client.js', import.meta.url), 'utf8'), {
     window: dom.window, document: dom.window.document, AbortController, Node: dom.window.Node,
-    FileReader: dom.window.FileReader, DOMException: dom.window.DOMException, crypto,
+    FileReader: dom.window.FileReader, DOMException: dom.window.DOMException, crypto, btoa, atob, Blob, URL,
     getComputedStyle: dom.window.getComputedStyle.bind(dom.window), performance, setTimeout, clearTimeout,
   });
   const rpc = { async call(channel, endpoint, payload) {
@@ -107,7 +108,7 @@ test('built-in preview eyes browse every page without selecting until explicitly
   const viewer = doc.querySelector('.ppt-template-viewer');
   assert(viewer.open);
   assert.equal(viewer.querySelector('h2').textContent, template.name);
-  const page = () => viewer.querySelector('footer [role=status]').textContent;
+  const page = () => viewer.querySelector('header [role=status]').textContent;
   const image = () => viewer.querySelector('img').src;
   const previous = viewer.querySelector('button[aria-label="Previous page"]');
   const next = viewer.querySelector('button[aria-label="Next page"]');
@@ -510,12 +511,14 @@ test('saved library retains preview, editing, deletion and ordinary first-messag
   await click(doc.querySelector('[data-personal-card] .ppt-preview-open'));
   await ui.until(() => doc.querySelector('.ppt-template-viewer img'));
   await click(doc.querySelector('.ppt-template-viewer button[aria-label=Close]'));
+  await click(doc.querySelector('[data-personal-card] .personal-more'));
   await click(doc.querySelector('[data-personal-card] button[aria-label="Edit template"]'));
   const description = doc.querySelector('.personal-dialog textarea');
   const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
   await React.act(async () => { setter.call(description, 'Updated use case'); description.dispatchEvent(new window.Event('input', { bubbles: true })); });
   await click(doc.querySelector('.personal-dialog button[type=submit]'));
   assert(ui.requests.some(item => item.endpoint === 'template/update' && item.payload.description === 'Updated use case'));
+  await click(doc.querySelector('[data-personal-card] .personal-more'));
   await click(doc.querySelector('[data-personal-card] button[aria-label=Delete]'));
   await click(doc.querySelector('.personal-dialog .personal-danger'));
   assert.equal(doc.querySelector('[data-personal-card]'), null);
@@ -555,4 +558,143 @@ for (const phase of ['failed', 'cancelled']) test(`${phase} preparation places r
   assert.equal(ui.state.templateAuthoring, undefined);
   assert.equal(ui.doc.querySelector('[data-template-authoring-error]'), null);
   assert.equal(ui.sent.length, 1, 'Cancel does not submit a second prompt');
+});
+
+
+test('thumbnail navigation jumps to every page, resets zoom and keeps keyboard focus in the strip', async t => {
+  const ui = await fixture(t);
+  await ui.click(ui.doc.querySelector('.ppt-preview-open'));
+  const viewer = ui.doc.querySelector('.ppt-template-viewer');
+  const thumbnails = [...viewer.querySelectorAll('.ppt-template-thumb')];
+  assert.equal(thumbnails.length, definitions[0].referencePageCount);
+  const image = () => viewer.querySelector('.ppt-template-stage img');
+  const firstImage = image().src;
+  await React.act(async () => viewer.querySelector('.ppt-fit-viewport').dispatchEvent(new window.WheelEvent('wheel', { ctrlKey: true, deltaY: -40, bubbles: true, cancelable: true })));
+  assert(Number(image().dataset.zoom) > 1);
+  await ui.click(thumbnails[3]);
+  assert.equal(thumbnails[3].getAttribute('aria-current'), 'page');
+  assert.notEqual(image().src, firstImage);
+  assert.equal(image().dataset.zoom, '1');
+  thumbnails[3].focus();
+  await React.act(async () => thumbnails[3].dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })));
+  assert.equal(thumbnails[4].getAttribute('aria-current'), 'page');
+  assert.equal(ui.doc.activeElement, thumbnails[4]);
+  await React.act(async () => thumbnails[4].dispatchEvent(new window.KeyboardEvent('keydown', { key: 'End', bubbles: true })));
+  assert.equal(thumbnails.at(-1).getAttribute('aria-current'), 'page');
+  assert.equal(ui.doc.activeElement, thumbnails.at(-1));
+  await React.act(async () => thumbnails.at(-1).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true })));
+  assert.equal(ui.state.selectedTemplateId, null);
+});
+
+test('visible thumbnail RPCs are bounded and failures do not block the main authored preview or save', async t => {
+  let observer;
+  const pending = [];
+  const ui = await fixture(t, {
+    setupWindow: window => { window.IntersectionObserver = class {
+      constructor(callback) { observer = { callback, targets: [], disconnected: false }; }
+      observe(node) { observer.targets.push(node); }
+      unobserve() {}
+      disconnect() { observer.disconnected = true; }
+    }; },
+    'template/authoring-preview': payload => payload.page === 1
+      ? { preview: personal.previewImages[0] }
+      : new Promise((resolve, reject) => pending.push({ resolve, reject })),
+  });
+  ui.state.templateAuthoring = { phase: 'review', workflowId: 'many-pages', revision: 1, draftId: 'current-draft', slideCount: 200, name: 'Large template', guideSent: true };
+  await ui.startConversation(); await ui.reload();
+  await ui.until(() => ui.doc.querySelector('.dsh-ppt-authoring-thumbnail img'));
+  await ui.click(ui.doc.querySelector('.dsh-ppt-authoring-thumbnail'));
+  assert.equal(observer.targets.length, 200);
+  const entries = observer.targets.slice(0, 8).map(target => ({ target, isIntersecting: true }));
+  await React.act(async () => observer.callback(entries));
+  assert.equal(pending.length, 2);
+  assert.equal(ui.requests.filter(item => item.endpoint === 'template/authoring-preview').length, 3);
+  await React.act(async () => pending[0].reject(new Error('Thumbnail unavailable')));
+  assert.equal(pending.length, 3, 'Only the released request slot starts another thumbnail');
+  assert(ui.doc.querySelector('.ppt-template-stage img'));
+  assert.equal(ui.doc.querySelector('.ppt-template-stage [role=alert]'), null);
+  assert.equal(ui.doc.querySelector('[data-template-authoring] button[type=submit]').disabled, false);
+  await ui.click(ui.doc.querySelector('.ppt-template-close'));
+  assert(observer.disconnected);
+  await React.act(async () => { pending[1].resolve({ preview: personal.previewImages[0] }); pending[2].resolve({ preview: personal.previewImages[0] }); });
+  assert.equal(pending.length, 3, 'Closing the viewer stops queued thumbnail work');
+});
+
+
+test('Custom imports from an empty library and reports duplicate/error without selecting or touching the composer', async t => {
+  let outcome = 'imported', failure = false, release;
+  const ui = await fixture(t, { 'template/package-import': async (payload, state) => {
+    assert.equal(payload.fileName, 'shared.dshtpl'); assert.equal(payload.base64, 'UEsDBA==');
+    await new Promise(resolve => { release = resolve; });
+    if (failure) throw new Error('Invalid template package');
+    state.templates = [...definitions, personal]; return { outcome, template: personal };
+  } });
+  const { doc, click } = ui;
+  assert.equal(doc.querySelector('.personal-import'), null, 'Import belongs only to Custom');
+  await click(doc.querySelector('[data-ppt-category="personal"]'));
+  assert(doc.querySelector('.personal-import')); assert.equal(doc.querySelector('[data-personal-card]'), null);
+  const chooseFile = async file => {
+    const input = doc.querySelector('input[type=file]');
+    Object.defineProperty(input, 'files', { configurable: true, value: file ? [file] : [] });
+    await React.act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+    assert.equal(input.value, '', 'The same package can be selected again');
+  };
+  const file = { name: 'shared.dshtpl', size: 4, arrayBuffer: async () => Uint8Array.from([80, 75, 3, 4]).buffer };
+  await chooseFile(file); assert(doc.querySelector('.personal-import').disabled);
+  assert(doc.querySelector('.personal-create').disabled); assert.match(doc.querySelector('.personal-package-feedback').textContent, /Importing/);
+  const builtInCategory = doc.querySelector('[data-ppt-category]:not([data-ppt-category="all"]):not([data-ppt-category="personal"])');
+  await click(builtInCategory);
+  assert.equal(doc.querySelector('[data-personal-card]'), null);
+  assert([...doc.querySelectorAll('article button')].every(button => button.disabled));
+  await React.act(async () => release());
+  assert.match(doc.querySelector('.personal-package-feedback').textContent, /Imported/);
+  await click(doc.querySelector('[data-ppt-category="personal"]'));
+  assert(doc.querySelector('[data-personal-card]')); assert.match(doc.querySelector('.personal-package-feedback').textContent, /Imported/);
+  outcome = 'existing'; await chooseFile(file); await React.act(async () => release());
+  assert.match(doc.querySelector('.personal-package-feedback').textContent, /already in your library/);
+  failure = true; await chooseFile(file); await React.act(async () => release());
+  assert.match(doc.querySelector('[role=alert]').textContent, /Invalid template package/);
+  const requests = ui.requests.filter(request => request.endpoint === 'template/package-import').length;
+  await chooseFile(null); assert.equal(ui.requests.filter(request => request.endpoint === 'template/package-import').length, requests);
+  await chooseFile({ ...file, size: 61 * 1024 * 1024 });
+  assert.match(doc.querySelector('[role=alert]').textContent, /60 MiB/);
+  assert.equal(ui.requests.filter(request => request.endpoint === 'template/package-import').length, requests);
+  assert.equal(ui.state.selectedTemplateId, null); assert.equal(ui.sent.length, 0);
+  assert.deepEqual(ui.composer, { text: 'Keep my existing draft', attachments: [{ name: 'brand.pptx' }] });
+});
+
+for (const leave of ['category', 'conversation']) test(`personal package download completes after switching ${leave} and leaves selection alone`, async t => {
+  let release;
+  const ui = await fixture(t, { 'template/package-export': async payload => {
+    assert.equal(payload.templateId, personal.id);
+    await new Promise(resolve => { release = resolve; });
+    return { fileName: 'Brand.dshtpl', base64: 'UEsDBA==' };
+  } });
+  ui.state.templates.push(personal); await ui.reload();
+  const { doc, click } = ui;
+  const anchorPrototype = window.HTMLAnchorElement.prototype;
+  const downloads = [], original = anchorPrototype.click;
+  const create = URL.createObjectURL, revoke = URL.revokeObjectURL;
+  const blobs = [], revoked = [];
+  URL.createObjectURL = blob => { blobs.push(blob); return 'blob:package-test'; };
+  URL.revokeObjectURL = url => revoked.push(url);
+  anchorPrototype.click = function () { downloads.push({ name: this.download, href: this.href }); };
+  t.after(() => { anchorPrototype.click = original; URL.createObjectURL = create; URL.revokeObjectURL = revoke; });
+  assert.equal(doc.querySelectorAll('.personal-more').length, 1, 'Built-in cards cannot export');
+  await click(doc.querySelector('.personal-more'));
+  assert.equal(document.activeElement.textContent, 'Export template');
+  await React.act(async () => document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  assert.equal(doc.querySelector('[role=menu]'), null); assert(document.activeElement.classList.contains('personal-more'));
+  await click(doc.querySelector('.personal-more')); await click(doc.querySelector('[role=menuitem]'));
+  assert.match(doc.querySelector('.personal-package-feedback').textContent, /Exporting/); assert(doc.querySelector('.personal-more').disabled);
+  if (leave === 'category') await click(doc.querySelector('[data-ppt-category]:not([data-ppt-category="all"]):not([data-ppt-category="personal"])'));
+  else await ui.startConversation();
+  assert.equal(doc.querySelector('[data-personal-card]'), null);
+  await React.act(async () => release());
+  assert.deepEqual(downloads, [{ name: 'Brand.dshtpl', href: 'blob:package-test' }]);
+  assert.deepEqual([...new Uint8Array(await blobs[0].arrayBuffer())], [80, 75, 3, 4]);
+  if (leave === 'category') assert.match(doc.querySelector('.personal-package-feedback').textContent, /Download started/);
+  await ui.until(() => revoked.length === 1); assert.deepEqual(revoked, ['blob:package-test']);
+  assert.equal(ui.state.selectedTemplateId, null); assert.equal(ui.sent.length, 0);
+  assert.deepEqual(ui.composer, { text: 'Keep my existing draft', attachments: [{ name: 'brand.pptx' }] });
 });
