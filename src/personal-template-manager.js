@@ -13,7 +13,10 @@ function FitPreviewImage({ src, alt, zoom, onZoom, onError, className }) {
   react.useEffect(() => { if (imageRef.current?.complete) imageReady(imageRef.current); }, [src]);
   react.useLayoutEffect(() => {
     const node = viewport.current;
-    const measure = () => setSize({ width: Math.max(1, node.clientWidth), height: Math.max(1, node.clientHeight) });
+    const measure = entries => {
+      const bounds = entries?.[0]?.contentRect;
+      setSize({ width: Math.max(1, bounds?.width ?? node.clientWidth), height: Math.max(1, bounds?.height ?? node.clientHeight) });
+    };
     measure();
     if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure); }
     const observer = new ResizeObserver(measure); observer.observe(node); return () => observer.disconnect();
@@ -249,6 +252,11 @@ function PersonalTemplateManager({ client, mode, sessionId, state, choose, start
   const alive = react.useRef(true);
   const titleId = react.useId();
   react.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, [sessionId]);
+  react.useEffect(() => {
+    if (operation.kind !== 'success') return;
+    const timer = setTimeout(() => setOperation(current => current === operation ? { kind: 'idle' } : current), 6000);
+    return () => clearTimeout(timer);
+  }, [operation, sessionId]);
   react.useLayoutEffect(() => {
     if (!modal) return;
     const node = dialog.current;
@@ -310,11 +318,12 @@ function PersonalTemplateManager({ client, mode, sessionId, state, choose, start
       h('span', null, t('personal.packageFileHint')),
       h('input', { ref: fileInput, type: 'file', accept: '.dshtpl', hidden: true, 'aria-label': t('personal.packageImport'), disabled: busy,
         onChange: event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) transfer('import', file); } })),
-    !modal && operation.kind !== 'idle' && h('p', { className: 'personal-package-feedback', role: operation.kind === 'error' ? 'alert' : 'status' },
-      operation.kind === 'busy' ? t(operation.action === 'import' ? 'personal.packageImporting' : 'personal.packageExporting') : operation.message),
+    !modal && operation.kind !== 'idle' && h('div', { className: 'personal-package-feedback', role: operation.kind === 'error' ? 'alert' : 'status' },
+      h('span', null, operation.kind === 'busy' ? t(operation.action === 'import' ? 'personal.packageImporting' : 'personal.packageExporting') : operation.message),
+      operation.kind === 'success' && h('button', { type: 'button', 'aria-label': t('personal.close'), onClick: () => setOperation({ kind: 'idle' }) }, '×')),
     h('div', { className: OfficePptHero_module_css_default.templateGrid },
       mutable && showPersonal && h('button', { type: 'button', className: 'personal-create', onClick: () => startAuthoring(), disabled: busy || state.loading },
-        h('span', { 'aria-hidden': true, style: { fontSize: 26 } }, '✦'), h('span', null, t('personal.create')), h('small', null, t('authoring.entryHint'))),
+        h('span', { 'aria-hidden': true, className: 'personal-create-icon' }, '✦'), h('span', { className: 'personal-create-title' }, t('personal.create')), h('small', null, t('authoring.entryHint'))),
       ...templates.map(template => h('div', { key: template.id, 'data-personal-card': template.id },
         h('div', { className: 'personal-frame' },
           h(TemplatePreviewCard, { template, selected: template.id === state.selectedId, choose, client, t, disabled: busy || state.loading }),
@@ -328,7 +337,9 @@ function PersonalTemplateManager({ client, mode, sessionId, state, choose, start
               }
             } },
             h('button', { type: 'button', className: 'personal-more', 'aria-label': `${t('personal.more')} · ${template.name}`, 'aria-haspopup': 'menu', 'aria-expanded': menu === template.id,
-              disabled: busy || state.loading, onClick: () => setMenu(menu === template.id ? null : template.id) }, '⋯'),
+              disabled: busy || state.loading, onClick: () => setMenu(menu === template.id ? null : template.id) },
+              h('svg', { width: 18, height: 18, viewBox: '0 0 18 18', fill: 'currentColor', 'aria-hidden': true, focusable: false },
+                ...[4, 9, 14].map(cx => h('circle', { key: cx, cx, cy: 9, r: 1.5 })))),
             menu === template.id && h('div', { ref: menuRef, className: 'personal-menu', role: 'menu', 'aria-label': template.name },
               h('button', { type: 'button', role: 'menuitem', onClick: () => transfer('export', template) }, t('personal.packageExport')),
               h('button', { type: 'button', role: 'menuitem', onClick: () => { setMenu(null); startAuthoring(template.id); } }, t('personal.editContent')),
@@ -355,10 +366,12 @@ function PersonalTemplateManager({ client, mode, sessionId, state, choose, start
             t(busy ? 'personal.processing' : modal.kind === 'delete' ? 'personal.confirmDelete' : 'personal.update'))))));
 }
 const PERSONAL_LIBRARY_CSS = `
-.personal-create{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;aspect-ratio:16/9;width:100%;padding:12px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:10px;background:var(--dsw-alias-interactive-bg-hover,#f1f2f4);color:var(--dsw-alias-label-secondary,#555);font:inherit;cursor:pointer}
-.personal-create small{font-size:11px}.personal-create:hover{color:var(--dsw-alias-label-primary,#222)}
+.personal-create{box-sizing:border-box;container-type:inline-size;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;aspect-ratio:16/9;width:100%;min-width:0;min-height:0;padding:4%;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:10px;background:var(--dsw-alias-interactive-bg-hover,#f1f2f4);color:var(--dsw-alias-label-secondary,#555);font:inherit;cursor:pointer}
+.personal-create-icon{font-size:clamp(16px,12cqi,26px);line-height:1}.personal-create-title{max-width:100%;font-size:clamp(10px,8cqi,14px);line-height:1.3;text-align:center;word-break:keep-all}.personal-create small{font-size:clamp(10px,6cqi,11px);line-height:1.3;white-space:nowrap}.personal-create:hover{color:var(--dsw-alias-label-primary,#222)}
+@container(max-width:160px){.personal-create small{display:none}}
+@container(max-width:110px){.personal-create-icon{display:none}}
 [data-personal-card]{min-width:0}.personal-frame{position:relative}.personal-actions{position:absolute;right:8px;top:8px;display:flex;gap:4px;z-index:2;opacity:0}.personal-frame:hover .personal-actions,.personal-frame:focus-within .personal-actions{opacity:1}
-.personal-more{width:28px;height:28px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:7px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222);font:inherit;font-size:20px;line-height:1;cursor:pointer}
+.personal-more{display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:7px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222);cursor:pointer}
 .personal-actions:has([aria-expanded=true]){opacity:1;z-index:3}
 .personal-menu{position:absolute;right:0;top:32px;display:grid;min-width:144px;padding:4px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 2px 12px #00000020)}
 .personal-menu button{padding:8px 12px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary,#222);font:inherit;font-size:13px;text-align:left;white-space:nowrap;cursor:pointer}
@@ -368,7 +381,8 @@ const PERSONAL_LIBRARY_CSS = `
 .personal-import:hover{background:var(--dsw-alias-interactive-bg-hover,#f1f2f4)}
 .personal-import:focus-visible,.personal-more:focus-visible,.personal-menu button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#3569d4);outline-offset:2px}
 .personal-import:disabled,.personal-more:disabled,.personal-create:disabled{opacity:.5;cursor:default}
-.personal-package-feedback{margin:0 0 12px;color:var(--dsw-alias-label-secondary,#666);font-size:13px;line-height:20px;overflow-wrap:anywhere}
+.personal-package-feedback{display:flex;align-items:flex-start;gap:8px;margin:0 0 12px;color:var(--dsw-alias-label-secondary,#666);font-size:13px;line-height:20px;overflow-wrap:anywhere}
+.personal-package-feedback span{flex:1;min-width:0}.personal-package-feedback button{flex:none;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:18px;cursor:pointer}.personal-package-feedback button:hover{background:var(--dsw-alias-interactive-bg-hover,#f1f2f4)}.personal-package-feedback button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#3569d4);outline-offset:2px}
 .personal-package-feedback[role=alert]{color:var(--dsw-alias-state-error-primary,#b42318)}
 .personal-dialog{box-sizing:border-box;width:min(560px,calc(100vw - 40px));max-height:calc(100dvh - 48px);margin:auto;padding:24px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ddd);border-radius:16px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222);font:inherit;overflow-y:auto}
 .personal-dialog::backdrop{background:#0007}.personal-dialog header,.personal-dialog footer{display:flex;justify-content:space-between;align-items:center;gap:12px}.personal-dialog h2{font-size:18px;margin:0}.personal-dialog form{display:grid;gap:18px;margin-top:20px}.personal-dialog label{display:grid;gap:8px}.personal-dialog input,.personal-dialog textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ccc);border-radius:8px;background:var(--dsw-alias-bg-base,#fff);color:inherit;font:inherit}.personal-dialog textarea{min-height:100px}.personal-dialog footer{justify-content:flex-end}.personal-dialog button{padding:7px 12px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#ccc);border-radius:8px;background:var(--dsw-alias-bg-base,#fff);color:inherit;font:inherit;cursor:pointer}.personal-dialog .personal-submit{background:var(--dsw-alias-label-primary,#222);color:var(--dsw-alias-bg-base,#fff)}.personal-dialog .personal-danger{color:#b42318}.personal-dialog button:disabled{opacity:.5}

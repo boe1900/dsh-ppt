@@ -31,7 +31,10 @@ window.__ModuleLoader__.load({
 			tag.dataset.pluginCss = tagId;
 			tag.textContent = css + `
 .dsh-ppt-dock{order:1}
-.dsh-ppt-panel-notice{margin:0 0 8px;color:var(--dsw-alias-label-secondary);font-size:12px}
+.dsh-ppt-panel-notice{display:flex;align-items:center;gap:8px;margin:0 0 8px;color:var(--dsw-alias-label-secondary);font-size:12px}
+.dsh-ppt-panel-notice span{flex:1}
+.dsh-ppt-panel-notice button{display:grid;place-items:center;flex:none;width:24px;height:24px;padding:0;border:0;border-radius:6px;background:none;color:inherit;font:inherit;font-size:18px;cursor:pointer}
+.dsh-ppt-panel-notice button:hover{background:var(--dsw-alias-interactive-bg-hover)}
 `;
 			document.head.appendChild(tag);
 		}
@@ -172,6 +175,7 @@ window.__ModuleLoader__.load({
 					activeMode,
 					loading: false,
 					selectedId: null,
+					notice: false,
 					error: ""
 				}));
 			}
@@ -321,6 +325,13 @@ window.__ModuleLoader__.load({
 		function OfficePptChooser({ client, mode, sessionId, startAuthoring, t }) {
 			const state = useMode(mode, sessionId);
 			const [category, setCategory] = react.useState("all");
+			const [visibleNotice, setVisibleNotice] = react.useState(state.notice);
+			react.useEffect(() => {
+				setVisibleNotice(state.notice);
+				if (!state.notice) return;
+				const timer = setTimeout(() => setVisibleNotice(null), 6000);
+				return () => clearTimeout(timer);
+			}, [sessionId, state.notice]);
 			const modeRootRef = react.useRef(null);
 			const templatePanelRef = react.useRef(null);
 			react.useLayoutEffect(() => {
@@ -384,7 +395,9 @@ window.__ModuleLoader__.load({
 							"data-selected": category === item || undefined, onClick: () => setCategory(item)
 						}, t(`templates.category.${item}`))))),
 					h("div", { className: OfficePptHero_module_css_default.templateViewport, "data-office-ppt-template-viewport": "", "data-native-wheel-owner": "", "aria-busy": state.loading },
-						state.notice && h("p", { className: "dsh-ppt-panel-notice", role: "status" }, t(state.notice === "personal-template-deleted" ? "personal.deletedSelection" : "templates.migrated")),
+						visibleNotice && h("p", { className: "dsh-ppt-panel-notice", role: "status" },
+							h("span", null, t(visibleNotice === "personal-template-deleted" ? "personal.deletedSelection" : "templates.migrated")),
+							h("button", { type: "button", "aria-label": t("personal.close"), onClick: () => setVisibleNotice(null) }, "×")),
 						state.error && h("div", { className: OfficePptHero_module_css_default.templateError, role: "alert" }, state.error,
 							h("button", { type: "button", className: OfficePptHero_module_css_default.retryButton, onClick: () => {
                                     mode.setLoading(sessionId, true);
@@ -401,7 +414,12 @@ window.__ModuleLoader__.load({
             const blank = props.useSession(current => current.blank);
             const running = props.useSession(current => current.running || (current.pendingSubmissions?.length ?? 0) > 0);
             const [operation, setOperation] = react.useState({ kind: "idle" });
-            const [savedName, setSavedName] = react.useState(null);
+            const [savedFeedback, setSavedFeedback] = react.useState(null);
+            react.useEffect(() => {
+                if (!savedFeedback) return;
+                const timer = setTimeout(() => setSavedFeedback(current => current === savedFeedback ? null : current), 6000);
+                return () => clearTimeout(timer);
+            }, [savedFeedback, props.sessionId]);
             const alive = react.useRef(true);
             const request = react.useRef(0);
             const fullReads = react.useRef(0);
@@ -456,13 +474,13 @@ window.__ModuleLoader__.load({
                 if (foregroundBusy.current) return;
                 foregroundBusy.current = true;
                 request.current++;
+                setSavedFeedback(null);
                 setOperation({ kind: "busy" });
                 try { await work(); if (alive.current) setOperation({ kind: "idle" }); }
                 catch (error) { if (alive.current) setOperation({ kind: "error", message: error.message }); }
                 finally { foregroundBusy.current = false; }
             };
             const startAuthoring = templateId => act(async () => {
-                setSavedName(null);
                 const workflow = await props.client.call("template/authoring-start", templateId ? { templateId } : {});
                 await refresh();
                 if (!alive.current || workflow.guideSent) return;
@@ -483,7 +501,7 @@ window.__ModuleLoader__.load({
                     if (!alive.current) return;
                     request.current++;
                     props.mode.setAuthoring(props.sessionId, saved);
-                    setSavedName(saved.name);
+                    setSavedFeedback({ name: saved.name });
                     await refresh();
                 })
             });
@@ -508,14 +526,14 @@ window.__ModuleLoader__.load({
                     props.t("authoring.guidePending"), operation.kind === "error" && ` ${operation.message}`, " ",
                     react.createElement("button", { type: "button", disabled: running,
                         style: { border: 0, padding: "2px 0", background: "none", color: "inherit", font: "inherit", cursor: "pointer" }, onClick: () => startAuthoring(authoring.origin?.base?.templateId) }, props.t("authoring.retryGuide"))),
-                savedName !== null && authoring?.phase === "saved" && react.createElement("div", { className: "dsh-ppt-authoring-frame" },
+                savedFeedback !== null && authoring?.phase === "saved" && react.createElement("div", { className: "dsh-ppt-authoring-frame" },
                     react.createElement("style", null, AUTHORING_CSS),
                     react.createElement("div", { "data-template-authoring-feedback": "", className: "dsh-ppt-authoring-feedback" },
                         react.createElement("svg", { className: "dsh-ppt-authoring-success-icon", width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.75, "aria-hidden": true },
                             react.createElement("circle", { cx: 12, cy: 12, r: 9 }),
                             react.createElement("path", { d: "m8 12 3 3 5-6", strokeLinecap: "round", strokeLinejoin: "round" })),
-                        react.createElement("p", { role: "status" }, props.t("authoring.saved").replace("{name}", savedName)),
-                        react.createElement("button", { type: "button", className: "dsh-ppt-authoring-button dsh-ppt-authoring-dismiss", "aria-label": props.t("personal.close"), onClick: () => setSavedName(null) }, "×"))),
+                        react.createElement("p", { role: "status" }, props.t("authoring.saved").replace("{name}", savedFeedback.name)),
+                        react.createElement("button", { type: "button", className: "dsh-ppt-authoring-button dsh-ppt-authoring-dismiss", "aria-label": props.t("personal.close"), onClick: () => setSavedFeedback(null) }, "×"))),
                 blank && (!authoring || authoring.phase === "saved") && react.createElement(OfficePptChooser, { client: props.client, mode: props.mode,
                     sessionId: props.sessionId, startAuthoring, t: props.t }));
         }
